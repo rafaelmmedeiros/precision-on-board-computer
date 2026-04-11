@@ -1,3 +1,4 @@
 .pio
 .idea
 .claude
+include/config.h
