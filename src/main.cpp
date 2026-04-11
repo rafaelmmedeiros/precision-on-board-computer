@@ -1,8 +1,37 @@
 #include <Arduino.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 void setup() {
-// write your initialization code here
+    Serial.begin(115200);
+
+    if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+        Serial.println("Falha ao inicializar o display SSD1306");
+        while (true);
+    }
+
+    display.clearDisplay();
+    display.setTextSize(3);
+    display.setTextColor(SSD1306_WHITE);
+
+    // Centraliza "ASTRA" na tela
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds("ASTRA", 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((SCREEN_WIDTH - w) / 2, (SCREEN_HEIGHT - h) / 2);
+    display.println("ASTRA");
+
+    display.display();
+    Serial.println("ASTRA exibido no display");
 }
 
 void loop() {
-// write your code here
 }
