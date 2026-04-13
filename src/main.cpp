@@ -190,6 +190,45 @@ void displayWeather() {
     display.display();
 }
 
+void displayDutyCycleDemo() {
+    // Demo: onda triangular 0-95% com período de 2.5s
+    const uint32_t period = 2500;
+    uint32_t t = millis() % period;
+    float phase = (float)t / period;
+    float duty = (phase < 0.5f) ? (phase * 2.0f) : (2.0f - phase * 2.0f);
+    duty *= 95.0f;
+
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("DUTY BICOS");
+
+    char pctStr[8];
+    snprintf(pctStr, sizeof(pctStr), "%2d%%", (int)duty);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(pctStr, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor(SCREEN_WIDTH - w, 0);
+    display.print(pctStr);
+
+    const int16_t barX = 4;
+    const int16_t barY = 24;
+    const int16_t barW = SCREEN_WIDTH - 8;
+    const int16_t barH = 20;
+    display.drawRect(barX, barY, barW, barH, SSD1306_WHITE);
+    int16_t fillW = (int16_t)((barW - 4) * (duty / 100.0f));
+    display.fillRect(barX + 2, barY + 2, fillW, barH - 4, SSD1306_WHITE);
+
+    display.setCursor(barX, barY + barH + 6);
+    display.print("0");
+    display.setCursor(barX + barW - 18, barY + barH + 6);
+    display.print("100");
+
+    display.display();
+}
+
 void displayCpuTemp() {
     float tempC = (temprature_sens_read() - 32) / 1.8f;
 
@@ -242,10 +281,11 @@ void loop() {
         case 0: displayDateTime(); break;
         case 1: displayCpuTemp(); break;
         case 2: displayWeather(); break;
+        case 3: displayDutyCycleDemo(); break;
     }
 
     if (millis() - lastSwitch >= 5000) {
-        screen = (screen + 1) % 3;
+        screen = (screen + 1) % 4;
         lastSwitch = millis();
     }
 
@@ -253,5 +293,5 @@ void loop() {
         updateWeather();
     }
 
-    delay(500);
+    delay(100);
 }
