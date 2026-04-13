@@ -20,8 +20,29 @@ O programador tem experiência em programação mas é iniciante em sistemas emb
 - **Temperatura:** DS18B20 × 2 (interna e externa)
 - **GPS:** NEO-8M com antena externa
 - **SD Card:** Módulo SPI
-- **Alimentação:** Regulador DC-DC automotivo + fusível 1A
+- **Alimentação:** Regulador DC-DC buck automotivo (ex: LM2596 ou MP1584) com saída dupla:
+  - 5V para ESP32 (via VIN) e periféricos 5V
+  - 3.3V dedicado para display final e módulos 3.3V (não usar o regulador interno do ESP32 para display)
+  - Entrada: 12-14.4V do carro + fusível 1A
+  - GND comum entre todos os componentes
 - **Buzzer:** Piezo passivo
+
+## Mapa de Pinos ESP32
+
+| Função | GPIO | Notas |
+|--------|------|-------|
+| I2C SDA (display/RTC) | 21 | Padrão Wire |
+| I2C SCL (display/RTC) | 22 | Padrão Wire |
+| Injeção (bicos) | 34 | Input-only, interrupt, divisor 5V→3.3V |
+| VSS (velocidade) | 36 (VP) | Input-only, interrupt |
+| Voltímetro carro | 32 | ADC1, divisor 14.4V→3.3V |
+| Buzzer | a definir | PWM |
+| DS18B20 (temp) | a definir | OneWire |
+| SD Card (SPI) | a definir | VSPI padrão |
+| GPS (Serial) | a definir | UART2 |
+| Botão R (navegação) | a definir | Pull-up interno |
+| Botão S (reset viagem) | a definir | Pull-up interno |
+| Dimmer backlight | a definir | PWM |
 
 ## Sinais do Carro
 
