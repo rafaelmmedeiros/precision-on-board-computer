@@ -94,6 +94,73 @@ pio test                             # Rodar testes
 pio run -t clean                     # Limpar build
 ```
 
+## Decisão pendente: rotação do display final
+
+Estado atual do firmware: `Font_90_degree` + `VDIR=1` (reg 0x12 bit 3). Texto sai **legível mas ponta-cabeça** do ponto de vista do motorista com mount datasheet (FPC na direita).
+
+O hardware limita as opções. Combinações testadas:
+- `Font_90_degree` sozinho → texto espelhado (efeito "AMBULÂNCIA")
+- `Font_90_degree + VDIR=1` → legível, ponta-cabeça (estado atual)
+- `Font_90_degree + HDIR=1` → **chuva de pixel** (corrompe framebuffer SDRAM)
+- `Font_90_degree + VDIR=1 + HDIR=1` → chuva de pixel
+- Flip 180° em software (coord flip + string reverse) sobre Font_90+VDIR → ponta-cabeça **e** espelhado
+
+O `Font_90_degree` do LT7680 é "CCW 90° + H-flip" embutido (conforme datasheet). `VDIR` é o único scan flip compatível com o framebuffer. Isso deixa uma rotação fixa de 180° off em relação ao que se quer com mount "FPC direita = bottom".
+
+**Caminhos de decisão para o futuro:**
+
+1. **Aceitar ponta-cabeça e inverter mount físico** — girar o display 180° no gabinete (FPC passa a sair pela esquerda). Sem código novo.
+2. **Fonte bitmap em software** — abandonar CGROM do LT7680. Tabela ASCII 5×7 ou 8×8 (~760 bytes) rasterizada com `DrawSquare_Fill` em posições rotacionadas pela CPU. Controle total de orientação. Custo: ~20 ms para string de 10 chars via SPI, aceitável para UI 10 Hz.
+3. **Mount portrait 320×960** — abandonar landscape, usar display vertical (tipo sidebar automotivo). `Font_0_degree` default, sem flips, layout natural. Requer redesenho da UI.
+
+## Limitações e possibilidades de layout no LT7680
+
+**O que a GPU do LT7680 faz nativamente (via ER_TFT):**
+- `DrawSquare` / `DrawSquare_Fill` — retângulos (outline e preenchido)
+- `DrawCircle_Fill`, `Start_Circle_or_Ellipse` — círculos e elipses
+- `Start_Line`, `Line_Start_XY`/`Line_End_XY` — linhas arbitrárias
+- `Start_Triangle` / `Start_Triangle_Fill` — triângulos
+- `Start_Circle_Square` — retângulos com cantos arredondados
+- `DrawPixel` — pixel individual (lento via SPI, só para casos pontuais)
+- BTE (Block Transfer Engine) — copiar/mover regiões da SDRAM com ROP codes e alpha blending; útil para sprites e composição
+- Múltiplas layers (framebuffers) — pelo menos 11 layers de 614400 bytes cada na SDRAM ~8 MB
+
+**Modos de cor:**
+- 16bpp RGB565 (65K cores) — atual
+- 24bpp RGB888 (16M cores) — se precisarmos de gradientes suaves, custa 2x memória
+- 8bpp — indexado, não aplicável pra UI em cor
+
+**Texto via CGROM interna:**
+- Fontes 8×16, 12×24, 16×32 ASCII (Latin-1 / ISO-8859-1/2/3/4)
+- Zoom 1x a 4x (largura e altura independentes) → efetivo de 8×16 até 64×128 por char
+- Rotação 0° ou 90° (com H-flip embutido no 90°, problema conhecido)
+- Background transparente ou colorido
+
+**Pode-se adicionar:**
+- **Chip de flash SPI externo** (ex: W25Q64, ligado nos pinos SFI do LT7680) — fontes TrueType pré-rasterizadas de tamanho arbitrário, sprites grandes. Tem slot de footprint na breakout.
+- **Bitmap font em software** (alternativa 2 acima) — sem hardware extra.
+
+**Limitações reais:**
+- Sem rotação nativa de bitmaps/imagens (só texto 0°/90°)
+- Sem antialiasing nativo (bordas de retângulos e círculos são "aliased")
+- Sem gradientes nativos — simulável com BTE alpha blending ou muitos rects pequenos
+- SPI a 8 MHz no driver atual — ~3 µs por registrador, limita throughput de operações granulares (mas fill/BTE são feitos pela GPU, sem overhead de pixel)
+
+**O que dá pra fazer para o P-OBC (Fase 1-4):**
+- **Gauges de barra** (consumo, duty cycle, voltagem) — retângulos preenchidos em gradiente de 3 cores via segmentação manual, trivial
+- **Números grandes** (velocidade, km/L) — fontes 16×32 com zoom 4x dá glyphs de 64×128, legível a metros
+- **Indicadores de alerta** — retângulos/círculos piscando via troca de layer
+- **Mapa de altitude/inclinação** (Fase 3 GPS) — linhas finas em uma layer, overlay numérico em outra
+- **Animações suaves** (boot logo, desligar) — pré-renderizar frames em flash externo e DMA → SDRAM → display via BTE
+- **Dimming noturno** — reduzir brilho do backlight via PWM (já previsto no hardware)
+- **Pixel shift anti burn-in** — trivial, mover origem do canvas alguns px a cada N minutos
+
+**O que NÃO dá sem esforço extra:**
+- Fontes custom proporcionais (precisa de flash externo OU bitmap font em software)
+- Texto em ângulos arbitrários (45°, 30°, etc.)
+- Antialiasing de verdade (workaround: supersample + BTE)
+- Vídeo ou animações complexas em tempo real
+
 ## Project Structure
 
 - `src/` — Código-fonte principal (main.cpp com setup/loop do Arduino)
