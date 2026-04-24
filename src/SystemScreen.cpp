@@ -7,36 +7,36 @@
 #include <stdio.h>
 
 // --- Layout constants ------------------------------------------------------
-// Divider line centered on the 960-wide display (pixels 478..481).
-static constexpr int DIV_X  = 478;
-static constexpr int DIV_W  = 4;
-static constexpr int DIV_Y  = 30;
-static constexpr int DIV_H  = 260;
+// Vertical divider centered on the 960-wide display.
+static constexpr int DIV_X = 478;
+static constexpr int DIV_W = 4;
+static constexpr int DIV_Y = 30;
+static constexpr int DIV_H = 260;
 
-// Content area boundaries (user X).
+// Content area boundaries (user.X).
 static constexpr int LEFT_START  = 0;
 static constexpr int LEFT_END    = DIV_X;               // 478
 static constexpr int RIGHT_START = DIV_X + DIV_W;       // 482
 static constexpr int RIGHT_END   = USR_W;               // 960
 
+// Pixel center of each half — used for sanity when aligning by hand.
+static constexpr int LEFT_MID  = (LEFT_START + LEFT_END)  / 2;   // 239
+static constexpr int RIGHT_MID = (RIGHT_START + RIGHT_END) / 2;  // 721
+
 // --- Simulated values (bench demo — sensors not yet wired) -----------------
 
 static float simVoltage() {
     float t = millis() / 1000.0f;
-    // 11.0..15.5 V over 30 s — cycles through red/amber/green/red bands.
     return 13.25f + 2.25f * sinf(t * 2.0f * (float)M_PI / 30.0f);
 }
 
 static float simTempInt() {
     float t = millis() / 1000.0f;
-    // 5..40 °C over 24 s — crosses both 10 °C and 30 °C thresholds.
     return 22.5f + 17.5f * sinf(t * 2.0f * (float)M_PI / 24.0f + 1.2f);
 }
 
 static float simTempExt() {
     float t = millis() / 1000.0f;
-    // -5..45 °C over 36 s — swings across all three color ranges, offset
-    // from the internal temp so values don't march in lockstep.
     return 20.0f + 25.0f * sinf(t * 2.0f * (float)M_PI / 36.0f + 2.4f);
 }
 
@@ -60,52 +60,56 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // LEFT HALF — time (big) + date (medium), vertically balanced.
-    // time: 16×32 zoom 3 → 480×48 glyph block, fills left half
-    // date: 12×24 zoom 3 → 360×36 glyph block
-    drawCenteredInU(LEFT_START, LEFT_END,  80, 2, 3, COL_AMBER, timeStr);
-    drawCenteredInU(LEFT_START, LEFT_END, 208, 1, 3, COL_AMBER, dateStr);
+    // LEFT HALF — time and date, balanced top-middle-bottom.
+    // Time 16x32 zoom 3 = 240 wide × 96 tall.
+    // Date 12x24 zoom 3 = 180 wide × 72 tall.
+    // Vertical budget 320 − (96+72) = 152 → three ~51px gaps.
+    drawCenteredInU(LEFT_START, LEFT_END,  51, 2, 3, COL_AMBER, timeStr);
+    drawCenteredInU(LEFT_START, LEFT_END, 198, 1, 3, COL_AMBER, dateStr);
 
-    // DIVIDER — dead center of the screen.
+    // DIVIDER (exact screen center).
     fillRectU(DIV_X, DIV_Y, DIV_W, DIV_H, COL_AMBER);
 
-    // RIGHT HALF — voltage value, voltage bar, INT temp, EXT temp.
+    // RIGHT HALF — voltage value, bar, INT, EXT. Balanced five-gap vertical.
     char buf[12];
 
-    // Voltage value (dominant element). 16×32 zoom 2 → 320×32.
+    // Voltage value 16x32 zoom 2 = 160 × 64. Centered above the bar.
     snprintf(buf, sizeof(buf), "%.1fV", volt);
-    drawCenteredInU(RIGHT_START, RIGHT_END, 42, 2, 2, vCol, buf);
+    drawCenteredInU(RIGHT_START, RIGHT_END, 26, 2, 2, vCol, buf);
 
-    // Voltage bar (10..16 V, 6 V span). 400 wide, centered in right half.
-    const int barW = 400;
-    const int barH = 30;
-    const int barX = RIGHT_START + (RIGHT_END - RIGHT_START - barW) / 2;
-    const int barY = 116;
-    fillRectU(barX,            barY,            barW, 3,    COL_AMBER);
-    fillRectU(barX,            barY + barH - 3, barW, 3,    COL_AMBER);
-    fillRectU(barX,            barY,            3,    barH, COL_AMBER);
-    fillRectU(barX + barW - 3, barY,            3,    barH, COL_AMBER);
+    // Voltage bar (10..16 V range), 400 wide centered, 30 tall.
+    constexpr int BAR_W = 400;
+    constexpr int BAR_H = 30;
+    constexpr int BAR_X = (RIGHT_START + RIGHT_END - BAR_W) / 2;   // 521
+    constexpr int BAR_Y = 116;
+    fillRectU(BAR_X,               BAR_Y,               BAR_W, 3,     COL_AMBER);
+    fillRectU(BAR_X,               BAR_Y + BAR_H - 3,   BAR_W, 3,     COL_AMBER);
+    fillRectU(BAR_X,               BAR_Y,               3,     BAR_H, COL_AMBER);
+    fillRectU(BAR_X + BAR_W - 3,   BAR_Y,               3,     BAR_H, COL_AMBER);
     float pct = (volt - 10.0f) / 6.0f;
     if (pct < 0.0f) pct = 0.0f;
     if (pct > 1.0f) pct = 1.0f;
-    int fw = (int)((barW - 12) * pct);
-    fillRectU(barX + 6, barY + 6, fw, barH - 12, vCol);
+    int fw = (int)((BAR_W - 12) * pct);
+    fillRectU(BAR_X + 6, BAR_Y + 6, fw, BAR_H - 12, vCol);
 
-    // Temperatures — "INT  25.3C" pattern. 12×24 zoom 2 → 48 px per char.
-    // Group = "INT" (3×48) + one-char gap (48) + "XX.XC" (5×48) = 432 px.
-    const int tCellW   = fontCellLong(1, 2);                // 48
-    const int labelW   = 3 * tCellW;                         // 144
-    const int gap      = tCellW;                             // 48
-    const int valueW   = 5 * tCellW;                         // 240
-    const int groupW   = labelW + gap + valueW;              // 432
-    const int tLabelX  = RIGHT_START + (RIGHT_END - RIGHT_START - groupW) / 2;
-    const int tValueX  = tLabelX + labelW + gap;
+    // Temperatures. "INT" label amber (3 chars) + one-char gap + "XX.XC" value.
+    // 12x24 zoom 2 = 24 × 48 per char.
+    constexpr int T_CELL  = 12 * 2;                      // 24 (user.X per char)
+    constexpr int T_LABEL = 3 * T_CELL;                  // 72
+    constexpr int T_GAP   = T_CELL;                      // 24
+    constexpr int T_VALUE = 5 * T_CELL;                  // 120
+    constexpr int T_GROUP = T_LABEL + T_GAP + T_VALUE;   // 216
+    constexpr int T_LABEL_X = (RIGHT_START + RIGHT_END - T_GROUP) / 2;
+    constexpr int T_VALUE_X = T_LABEL_X + T_LABEL + T_GAP;
 
-    drawTextU(tLabelX, 188, 1, 2, COL_AMBER, "INT");
+    drawTextU(T_LABEL_X, 172, 1, 2, COL_AMBER, "INT");
     snprintf(buf, sizeof(buf), "%.1fC", tInt);
-    drawTextU(tValueX, 188, 1, 2, iCol, buf);
+    drawTextU(T_VALUE_X, 172, 1, 2, iCol, buf);
 
-    drawTextU(tLabelX, 254, 1, 2, COL_AMBER, "EXT");
+    drawTextU(T_LABEL_X, 246, 1, 2, COL_AMBER, "EXT");
     snprintf(buf, sizeof(buf), "%.1fC", tExt);
-    drawTextU(tValueX, 254, 1, 2, eCol, buf);
+    drawTextU(T_VALUE_X, 246, 1, 2, eCol, buf);
+
+    (void)LEFT_MID;   // kept for future hand-aligned elements
+    (void)RIGHT_MID;
 }

@@ -8,14 +8,18 @@ static unsigned long g_backFb  = layer2_start_addr;
 
 // --- Font helpers ----------------------------------------------------------
 
+// With Font_90_degree, the cursor advances along panel.y (= user.X) by the
+// ORIGINAL glyph width (8/12/16). The glyph's extent in user.Y is the
+// original height (16/24/32). Earlier version had these swapped, which
+// caused every centered element to hug the left edge.
 int fontCellLong(uint8_t fontSel, uint8_t zoom) {
-    int tall = (fontSel == 0) ? 16 : (fontSel == 1) ? 24 : 32;
-    return tall * zoom;
+    int wide = (fontSel == 0) ? 8 : (fontSel == 1) ? 12 : 16;
+    return wide * zoom;
 }
 
 int fontCellShort(uint8_t fontSel, uint8_t zoom) {
-    int wide = (fontSel == 0) ? 8 : (fontSel == 1) ? 12 : 16;
-    return wide * zoom;
+    int tall = (fontSel == 0) ? 16 : (fontSel == 1) ? 24 : 32;
+    return tall * zoom;
 }
 
 static void selectFont(uint8_t fontSel, uint8_t zoom) {
