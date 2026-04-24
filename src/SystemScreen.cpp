@@ -1,7 +1,7 @@
 #include "SystemScreen.h"
 #include "Tft.h"
 #include "BitmapFont.h"
-#include "Fonts_DSEG14.h"
+#include "Fonts_DSEG7.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -68,24 +68,24 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // LEFT HALF — time (DSEG7 96px) on top, date (CGROM 12x24 z3) below.
-    // DSEG14_96 line height 96, date block 72. Budget 320 − (96+72) = 152 → ~51px gaps.
+    // LEFT HALF — time (DSEG7 120px) on top, date (CGROM 12x24 z3) below.
+    // Line height 120 + date block 72. Budget 320 − 192 = 128 → ~43px gaps.
     // Measure with valid glyphs: the font has only digits, ':' and a few punct.
     // "88" and "--" both measure 2 × digit advance, so the layout stays stable
     // whether we're showing real time or the boot placeholder.
-    const int hhW    = measureBitmapText(DSEG14_96, hhStr);
-    const int mmW    = measureBitmapText(DSEG14_96, mmStr);
-    const int colonW = measureBitmapText(DSEG14_96, ":");
+    const int hhW    = measureBitmapText(DSEG7_120, hhStr);
+    const int mmW    = measureBitmapText(DSEG7_120, mmStr);
+    const int colonW = measureBitmapText(DSEG7_120, ":");
     const int timeW  = hhW + colonW + mmW;
     const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
-    constexpr int TIME_Y = 51;
-    constexpr int DATE_Y = 198;
+    constexpr int TIME_Y = 43;
+    constexpr int DATE_Y = 206;
 
-    drawBitmapText(timeX, TIME_Y, DSEG14_96, hhStr, COL_AMBER);
+    drawBitmapText(timeX, TIME_Y, DSEG7_120, hhStr, COL_AMBER);
     if (colonOn) {
-        drawBitmapText(timeX + hhW, TIME_Y, DSEG14_96, ":", COL_AMBER);
+        drawBitmapText(timeX + hhW, TIME_Y, DSEG7_120, ":", COL_AMBER);
     }
-    drawBitmapText(timeX + hhW + colonW, TIME_Y, DSEG14_96, mmStr, COL_AMBER);
+    drawBitmapText(timeX + hhW + colonW, TIME_Y, DSEG7_120, mmStr, COL_AMBER);
 
     drawCenteredInU(LEFT_START, LEFT_END, DATE_Y, 1, 3, COL_AMBER, dateStr);
 

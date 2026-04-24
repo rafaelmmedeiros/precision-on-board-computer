@@ -9,12 +9,10 @@ Sizes: 96 and 48 px digit-height (target).
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-FONT_FILE = "DSEG14Classic-Bold.ttf"
-FONT_NAME = "DSEG14"   # prefix for generated C++ symbols
-# 14-segment supports letters, so we include A-Z for future labels (INT, EXT,
-# KM/L, VOLT, RPM, etc.). Still cheap: ~20 KB extra in flash.
-CHARS = "0123456789:.-/ ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-TARGETS = [96, 48]  # desired digit-cap height in pixels
+FONT_FILE = "DSEG7Classic-Bold.ttf"
+FONT_NAME = "DSEG7"
+CHARS = "0123456789:.-/"
+TARGETS = [120, 60]  # desired digit-cap height in pixels
 OUT_HEADER = Path(f"../../include/Fonts_{FONT_NAME}.h")
 OUT_SOURCE = Path(f"../../src/Fonts_{FONT_NAME}.cpp")
 
