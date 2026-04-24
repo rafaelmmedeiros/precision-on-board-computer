@@ -30,12 +30,14 @@ static constexpr int RIGHT_MID = (RIGHT_START + RIGHT_END) / 2;  // 721
 // Temporary bench harness: cycles the clock through several bitmap fonts
 // every SWAP_MS so we can eyeball each on real hardware and pick one.
 struct Candidate {
-    const BitmapFont* font;
+    const BitmapFont* hero120;
+    const BitmapFont* hero72;
+    const BitmapFont* hero48;
     const char* name;
 };
 static const Candidate CANDIDATES[] = {
-    { &DSEG7C_120, "DSEG7 CLASSIC BOLD" },
-    { &TEKO_120,   "TEKO BOLD"          },
+    { &DSEG7C_120, &DSEG7C_72, &DSEG7C_48, "DSEG7 CLASSIC BOLD" },
+    { &TEKO_120,   &TEKO_72,   &TEKO_48,   "TEKO BOLD"          },
 };
 static constexpr int  N_CANDIDATES = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
 static constexpr uint32_t SWAP_MS  = 10000;   // 10 s per font
@@ -82,21 +84,22 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // LEFT HALF — clock (bitmap font, swapping every 10s), date (CGROM),
-    // and a small CGROM label naming the current candidate font.
-    // Line height ~120 + date 72 + label 16. Budget 320 − 208 = 112 → 4 gaps ~28.
+    // Pick the active candidate font set.
     const uint32_t idx = (millis() / SWAP_MS) % N_CANDIDATES;
-    const BitmapFont& clockFont = *CANDIDATES[idx].font;
+    const BitmapFont& clockFont = *CANDIDATES[idx].hero120;
+    const BitmapFont& voltFont  = *CANDIDATES[idx].hero72;
+    const BitmapFont& tempFont  = *CANDIDATES[idx].hero48;
     const char* fontName        = CANDIDATES[idx].name;
 
+    // LEFT HALF — clock (hero 120), date (CGROM), font-name label (CGROM small).
     const int hhW    = measureBitmapText(clockFont, hhStr);
     const int mmW    = measureBitmapText(clockFont, mmStr);
     const int colonW = measureBitmapText(clockFont, ":");
     const int timeW  = hhW + colonW + mmW;
     const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
     constexpr int TIME_Y  = 28;
-    constexpr int DATE_Y  = 176;   // 28 + 120 + 28
-    constexpr int LABEL_Y = 276;   // 176 + 72 + 28
+    constexpr int DATE_Y  = 176;
+    constexpr int LABEL_Y = 276;
 
     drawBitmapText(timeX, TIME_Y, clockFont, hhStr, COL_AMBER);
     if (colonOn) {
@@ -104,51 +107,63 @@ void displaySystem() {
     }
     drawBitmapText(timeX + hhW + colonW, TIME_Y, clockFont, mmStr, COL_AMBER);
 
-    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y,  1, 3, COL_AMBER, dateStr);
+    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y,  1, 2, COL_AMBER, dateStr);
     drawCenteredInU(LEFT_START, LEFT_END, LABEL_Y, 0, 2, COL_AMBER, fontName);
 
     // DIVIDER (exact screen center).
     fillRectU(DIV_X, DIV_Y, DIV_W, DIV_H, COL_AMBER);
 
-    // RIGHT HALF — voltage value, bar, INT, EXT. Balanced five-gap vertical.
-    char buf[12];
+    // RIGHT HALF — voltage (hero 72 + V unit), bar, INT/EXT (hero 48 + C unit).
+    // Heights: 72 + 30 + 48 + 48 = 198. Budget 320-198=122 → 5 gaps ~24.
+    constexpr int VOLT_Y = 24;
+    constexpr int BAR_Y  = 120;
+    constexpr int INT_Y  = 174;
+    constexpr int EXT_Y  = 246;
 
-    // Voltage value 16x32 zoom 2 = 160 × 64. Centered above the bar.
-    snprintf(buf, sizeof(buf), "%.1fV", volt);
-    drawCenteredInU(RIGHT_START, RIGHT_END, 26, 2, 2, vCol, buf);
+    // -- Voltage: "13.5" hero + "V" CGROM 16x32 z2 (32 wide × 64 tall).
+    char numBuf[8];
+    snprintf(numBuf, sizeof(numBuf), "%.1f", volt);
+    const int vNumW  = measureBitmapText(voltFont, numBuf);
+    const int vUnitW = fontCellLong(2, 2);   // 32
+    constexpr int V_GAP = 10;
+    const int vTotalW = vNumW + V_GAP + vUnitW;
+    const int vStartX = RIGHT_START + (RIGHT_END - RIGHT_START - vTotalW) / 2;
+    drawBitmapText(vStartX, VOLT_Y, voltFont, numBuf, vCol);
+    // Align unit vertically centered against the hero (hero 72 tall, unit 64).
+    drawTextU(vStartX + vNumW + V_GAP, VOLT_Y + (72 - 64) / 2, 2, 2, vCol, "V");
 
-    // Voltage bar (10..16 V range), 400 wide centered, 30 tall.
+    // -- Voltage bar (unchanged layout).
     constexpr int BAR_W = 400;
     constexpr int BAR_H = 30;
-    constexpr int BAR_X = (RIGHT_START + RIGHT_END - BAR_W) / 2;   // 521
-    constexpr int BAR_Y = 116;
-    fillRectU(BAR_X,               BAR_Y,               BAR_W, 3,     COL_AMBER);
-    fillRectU(BAR_X,               BAR_Y + BAR_H - 3,   BAR_W, 3,     COL_AMBER);
-    fillRectU(BAR_X,               BAR_Y,               3,     BAR_H, COL_AMBER);
-    fillRectU(BAR_X + BAR_W - 3,   BAR_Y,               3,     BAR_H, COL_AMBER);
+    constexpr int BAR_X = (RIGHT_START + RIGHT_END - BAR_W) / 2;
+    fillRectU(BAR_X,             BAR_Y,             BAR_W, 3,     COL_AMBER);
+    fillRectU(BAR_X,             BAR_Y + BAR_H - 3, BAR_W, 3,     COL_AMBER);
+    fillRectU(BAR_X,             BAR_Y,             3,     BAR_H, COL_AMBER);
+    fillRectU(BAR_X + BAR_W - 3, BAR_Y,             3,     BAR_H, COL_AMBER);
     float pct = (volt - 10.0f) / 6.0f;
     if (pct < 0.0f) pct = 0.0f;
     if (pct > 1.0f) pct = 1.0f;
-    int fw = (int)((BAR_W - 12) * pct);
+    const int fw = (int)((BAR_W - 12) * pct);
     fillRectU(BAR_X + 6, BAR_Y + 6, fw, BAR_H - 12, vCol);
 
-    // Temperatures. "INT" label amber (3 chars) + one-char gap + "XX.XC" value.
-    // 12x24 zoom 2 = 24 × 48 per char.
-    constexpr int T_CELL  = 12 * 2;                      // 24 (user.X per char)
-    constexpr int T_LABEL = 3 * T_CELL;                  // 72
-    constexpr int T_GAP   = T_CELL;                      // 24
-    constexpr int T_VALUE = 5 * T_CELL;                  // 120
-    constexpr int T_GROUP = T_LABEL + T_GAP + T_VALUE;   // 216
-    constexpr int T_LABEL_X = (RIGHT_START + RIGHT_END - T_GROUP) / 2;
-    constexpr int T_VALUE_X = T_LABEL_X + T_LABEL + T_GAP;
-
-    drawTextU(T_LABEL_X, 172, 1, 2, COL_AMBER, "INT");
-    snprintf(buf, sizeof(buf), "%.1fC", tInt);
-    drawTextU(T_VALUE_X, 172, 1, 2, iCol, buf);
-
-    drawTextU(T_LABEL_X, 246, 1, 2, COL_AMBER, "EXT");
-    snprintf(buf, sizeof(buf), "%.1fC", tExt);
-    drawTextU(T_VALUE_X, 246, 1, 2, eCol, buf);
+    // -- Temperatures: "INT" CGROM + "XX.X" hero 48 + "C" CGROM. Same for EXT.
+    // CGROM 12x24 z2 = 24w × 48t per char.
+    auto drawTempRow = [&](int y, const char* label, float value, uint16_t col) {
+        char tb[8];
+        snprintf(tb, sizeof(tb), "%.1f", value);
+        constexpr int CELL   = 12 * 2;              // 24
+        constexpr int LBL_W  = 3 * CELL;            // "INT"/"EXT" = 72
+        constexpr int UNIT_W = CELL;                // "C" = 24
+        constexpr int GAP    = 16;
+        const int numW   = measureBitmapText(tempFont, tb);
+        const int totalW = LBL_W + GAP + numW + GAP + UNIT_W;
+        const int x0     = RIGHT_START + (RIGHT_END - RIGHT_START - totalW) / 2;
+        drawTextU(x0, y, 1, 2, COL_AMBER, label);
+        drawBitmapText(x0 + LBL_W + GAP, y, tempFont, tb, col);
+        drawTextU(x0 + LBL_W + GAP + numW + GAP, y, 1, 2, col, "C");
+    };
+    drawTempRow(INT_Y, "INT", tInt, iCol);
+    drawTempRow(EXT_Y, "EXT", tExt, eCol);
 
     (void)LEFT_MID;   // kept for future hand-aligned elements
     (void)RIGHT_MID;
