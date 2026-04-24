@@ -26,22 +26,6 @@ static constexpr int RIGHT_END   = USR_W;               // 960
 static constexpr int LEFT_MID  = (LEFT_START + LEFT_END)  / 2;   // 239
 static constexpr int RIGHT_MID = (RIGHT_START + RIGHT_END) / 2;  // 721
 
-// --- Font comparison carousel ----------------------------------------------
-// Temporary bench harness: cycles the clock through several bitmap fonts
-// every SWAP_MS so we can eyeball each on real hardware and pick one.
-struct Candidate {
-    const BitmapFont* hero120;
-    const BitmapFont* hero72;
-    const BitmapFont* hero48;
-    const char* name;
-};
-static const Candidate CANDIDATES[] = {
-    { &DSEG7C_120, &DSEG7C_72, &DSEG7C_48, "DSEG7 CLASSIC BOLD" },
-    { &TEKO_120,   &TEKO_72,   &TEKO_48,   "TEKO BOLD"          },
-};
-static constexpr int  N_CANDIDATES = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
-static constexpr uint32_t SWAP_MS  = 10000;   // 10 s per font
-
 // --- Simulated values (bench demo — sensors not yet wired) -----------------
 
 static float simVoltage() {
@@ -84,31 +68,23 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // Pick the active candidate font set.
-    const uint32_t idx = (millis() / SWAP_MS) % N_CANDIDATES;
-    const BitmapFont& clockFont = *CANDIDATES[idx].hero120;
-    const BitmapFont& voltFont  = *CANDIDATES[idx].hero72;
-    const BitmapFont& tempFont  = *CANDIDATES[idx].hero48;
-    const char* fontName        = CANDIDATES[idx].name;
-
-    // LEFT HALF — clock (hero 120), date (CGROM), font-name label (CGROM small).
-    const int hhW    = measureBitmapText(clockFont, hhStr);
-    const int mmW    = measureBitmapText(clockFont, mmStr);
-    const int colonW = measureBitmapText(clockFont, ":");
+    // LEFT HALF — clock (DSEG7 120) on top, date (CGROM 12x24 z3) below.
+    // Heights 120 + 72 = 192. Budget 320 − 192 = 128 → 3 gaps ~43.
+    const int hhW    = measureBitmapText(DSEG7_120, hhStr);
+    const int mmW    = measureBitmapText(DSEG7_120, mmStr);
+    const int colonW = measureBitmapText(DSEG7_120, ":");
     const int timeW  = hhW + colonW + mmW;
     const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
-    constexpr int TIME_Y  = 28;
-    constexpr int DATE_Y  = 176;
-    constexpr int LABEL_Y = 276;
+    constexpr int TIME_Y = 43;
+    constexpr int DATE_Y = 206;
 
-    drawBitmapText(timeX, TIME_Y, clockFont, hhStr, COL_AMBER);
+    drawBitmapText(timeX, TIME_Y, DSEG7_120, hhStr, COL_AMBER);
     if (colonOn) {
-        drawBitmapText(timeX + hhW, TIME_Y, clockFont, ":", COL_AMBER);
+        drawBitmapText(timeX + hhW, TIME_Y, DSEG7_120, ":", COL_AMBER);
     }
-    drawBitmapText(timeX + hhW + colonW, TIME_Y, clockFont, mmStr, COL_AMBER);
+    drawBitmapText(timeX + hhW + colonW, TIME_Y, DSEG7_120, mmStr, COL_AMBER);
 
-    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y,  1, 2, COL_AMBER, dateStr);
-    drawCenteredInU(LEFT_START, LEFT_END, LABEL_Y, 0, 2, COL_AMBER, fontName);
+    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y, 1, 3, COL_AMBER, dateStr);
 
     // DIVIDER (exact screen center).
     fillRectU(DIV_X, DIV_Y, DIV_W, DIV_H, COL_AMBER);
@@ -123,12 +99,12 @@ void displaySystem() {
     // -- Voltage: "13.5" hero + "V" CGROM 16x32 z2 (32 wide × 64 tall).
     char numBuf[8];
     snprintf(numBuf, sizeof(numBuf), "%.1f", volt);
-    const int vNumW  = measureBitmapText(voltFont, numBuf);
+    const int vNumW  = measureBitmapText(DSEG7_72, numBuf);
     const int vUnitW = fontCellLong(2, 2);   // 32
     constexpr int V_GAP = 10;
     const int vTotalW = vNumW + V_GAP + vUnitW;
     const int vStartX = RIGHT_START + (RIGHT_END - RIGHT_START - vTotalW) / 2;
-    drawBitmapText(vStartX, VOLT_Y, voltFont, numBuf, vCol);
+    drawBitmapText(vStartX, VOLT_Y, DSEG7_72, numBuf, vCol);
     // Align unit vertically centered against the hero (hero 72 tall, unit 64).
     drawTextU(vStartX + vNumW + V_GAP, VOLT_Y + (72 - 64) / 2, 2, 2, vCol, "V");
 
@@ -155,11 +131,11 @@ void displaySystem() {
         constexpr int LBL_W  = 3 * CELL;            // "INT"/"EXT" = 72
         constexpr int UNIT_W = CELL;                // "C" = 24
         constexpr int GAP    = 16;
-        const int numW   = measureBitmapText(tempFont, tb);
+        const int numW   = measureBitmapText(DSEG7_48, tb);
         const int totalW = LBL_W + GAP + numW + GAP + UNIT_W;
         const int x0     = RIGHT_START + (RIGHT_END - RIGHT_START - totalW) / 2;
         drawTextU(x0, y, 1, 2, COL_AMBER, label);
-        drawBitmapText(x0 + LBL_W + GAP, y, tempFont, tb, col);
+        drawBitmapText(x0 + LBL_W + GAP, y, DSEG7_48, tb, col);
         drawTextU(x0 + LBL_W + GAP + numW + GAP, y, 1, 2, col, "C");
     };
     drawTempRow(INT_Y, "INT", tInt, iCol);

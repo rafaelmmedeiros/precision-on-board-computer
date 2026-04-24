@@ -9,8 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # (ttf_path, symbol_prefix, monospace_digits, target_heights, variation_name)
 FONTS = [
-    ("DSEG7Classic-Bold.ttf",  "DSEG7C",   True,  [120, 72, 48], None),
-    ("Teko[wght].ttf",         "TEKO",     True,  [120, 72, 48], b"Bold"),
+    ("DSEG7Classic-Bold.ttf",  "DSEG7", True, [120, 72, 48], None),
 ]
 CHARS = "0123456789:.-/ "
 OUT_HEADER = Path("../../include/Fonts.h")
