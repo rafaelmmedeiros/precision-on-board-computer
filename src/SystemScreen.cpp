@@ -70,9 +70,13 @@ void displaySystem() {
 
     // LEFT HALF — time (DSEG7 96px) on top, date (CGROM 12x24 z3) below.
     // DSEG7_96 line height 96, date block 72. Budget 320 − (96+72) = 152 → ~51px gaps.
-    const int timeW  = measureBitmapText(DSEG7_96, "HH:MM");
-    const int hhW    = measureBitmapText(DSEG7_96, "HH");
+    // Measure with valid glyphs: the font has only digits, ':' and a few punct.
+    // "88" and "--" both measure 2 × digit advance, so the layout stays stable
+    // whether we're showing real time or the boot placeholder.
+    const int hhW    = measureBitmapText(DSEG7_96, hhStr);
+    const int mmW    = measureBitmapText(DSEG7_96, mmStr);
     const int colonW = measureBitmapText(DSEG7_96, ":");
+    const int timeW  = hhW + colonW + mmW;
     const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
     constexpr int TIME_Y = 51;
     constexpr int DATE_Y = 198;
