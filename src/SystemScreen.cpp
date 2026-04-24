@@ -1,7 +1,7 @@
 #include "SystemScreen.h"
 #include "Tft.h"
 #include "BitmapFont.h"
-#include "Fonts_DSEG7.h"
+#include "Fonts.h"
 
 #include <Arduino.h>
 #include <math.h>
@@ -25,6 +25,22 @@ static constexpr int RIGHT_END   = USR_W;               // 960
 // Pixel center of each half — used for sanity when aligning by hand.
 static constexpr int LEFT_MID  = (LEFT_START + LEFT_END)  / 2;   // 239
 static constexpr int RIGHT_MID = (RIGHT_START + RIGHT_END) / 2;  // 721
+
+// --- Font comparison carousel ----------------------------------------------
+// Temporary bench harness: cycles the clock through several bitmap fonts
+// every SWAP_MS so we can eyeball each on real hardware and pick one.
+struct Candidate {
+    const BitmapFont* font;
+    const char* name;
+};
+static const Candidate CANDIDATES[] = {
+    { &DSEG7C_120,   "DSEG7 CLASSIC BOLD" },
+    { &DSEG7M_120,   "DSEG7 MODERN BOLD"  },
+    { &ORBITRON_120, "ORBITRON BLACK"     },
+    { &TEKO_120,     "TEKO BOLD"          },
+};
+static constexpr int  N_CANDIDATES = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
+static constexpr uint32_t SWAP_MS  = 10000;   // 10 s per font
 
 // --- Simulated values (bench demo — sensors not yet wired) -----------------
 
@@ -68,26 +84,30 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // LEFT HALF — time (DSEG7 120px) on top, date (CGROM 12x24 z3) below.
-    // Line height 120 + date block 72. Budget 320 − 192 = 128 → ~43px gaps.
-    // Measure with valid glyphs: the font has only digits, ':' and a few punct.
-    // "88" and "--" both measure 2 × digit advance, so the layout stays stable
-    // whether we're showing real time or the boot placeholder.
-    const int hhW    = measureBitmapText(DSEG7_120, hhStr);
-    const int mmW    = measureBitmapText(DSEG7_120, mmStr);
-    const int colonW = measureBitmapText(DSEG7_120, ":");
+    // LEFT HALF — clock (bitmap font, swapping every 10s), date (CGROM),
+    // and a small CGROM label naming the current candidate font.
+    // Line height ~120 + date 72 + label 16. Budget 320 − 208 = 112 → 4 gaps ~28.
+    const uint32_t idx = (millis() / SWAP_MS) % N_CANDIDATES;
+    const BitmapFont& clockFont = *CANDIDATES[idx].font;
+    const char* fontName        = CANDIDATES[idx].name;
+
+    const int hhW    = measureBitmapText(clockFont, hhStr);
+    const int mmW    = measureBitmapText(clockFont, mmStr);
+    const int colonW = measureBitmapText(clockFont, ":");
     const int timeW  = hhW + colonW + mmW;
     const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
-    constexpr int TIME_Y = 43;
-    constexpr int DATE_Y = 206;
+    constexpr int TIME_Y  = 28;
+    constexpr int DATE_Y  = 176;   // 28 + 120 + 28
+    constexpr int LABEL_Y = 276;   // 176 + 72 + 28
 
-    drawBitmapText(timeX, TIME_Y, DSEG7_120, hhStr, COL_AMBER);
+    drawBitmapText(timeX, TIME_Y, clockFont, hhStr, COL_AMBER);
     if (colonOn) {
-        drawBitmapText(timeX + hhW, TIME_Y, DSEG7_120, ":", COL_AMBER);
+        drawBitmapText(timeX + hhW, TIME_Y, clockFont, ":", COL_AMBER);
     }
-    drawBitmapText(timeX + hhW + colonW, TIME_Y, DSEG7_120, mmStr, COL_AMBER);
+    drawBitmapText(timeX + hhW + colonW, TIME_Y, clockFont, mmStr, COL_AMBER);
 
-    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y, 1, 3, COL_AMBER, dateStr);
+    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y,  1, 3, COL_AMBER, dateStr);
+    drawCenteredInU(LEFT_START, LEFT_END, LABEL_Y, 0, 2, COL_AMBER, fontName);
 
     // DIVIDER (exact screen center).
     fillRectU(DIV_X, DIV_Y, DIV_W, DIV_H, COL_AMBER);
