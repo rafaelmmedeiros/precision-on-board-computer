@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ArduinoOTA.h>
 #include <time.h>
 
 #include "Tft.h"
@@ -32,8 +33,20 @@ static void connectWiFi() {
         Serial.print(".");
     }
     Serial.println(" conectado!");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
     showMessage("WiFi conectado!");
     delay(800);
+}
+
+static void setupOTA() {
+    ArduinoOTA.setHostname("pobc");
+    ArduinoOTA
+        .onStart([]() { showMessage("Atualizando..."); })
+        .onEnd([]()   { showMessage("OK, reiniciando"); })
+        .onError([](ota_error_t) { showMessage("Falha OTA"); });
+    ArduinoOTA.begin();
+    Serial.println("OTA pronto em pobc.local");
 }
 
 static void syncTime() {
@@ -56,6 +69,7 @@ void setup() {
 
     tftInit();
     connectWiFi();
+    setupOTA();
     syncTime();
 }
 
@@ -76,6 +90,7 @@ void loop() {
         lastSwitch = millis();
     }
 
+    ArduinoOTA.handle();
     tftTick();   // advance anti-image-sticking pixel shift
     delay(100);
 }
