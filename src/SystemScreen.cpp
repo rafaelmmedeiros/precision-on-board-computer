@@ -1,10 +1,13 @@
 #include "SystemScreen.h"
 #include "Tft.h"
+#include "BitmapFont.h"
+#include "Fonts_DSEG7.h"
 
 #include <Arduino.h>
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
+#include <string.h>
 
 // --- Layout constants ------------------------------------------------------
 // Vertical divider centered on the 960-wide display.
@@ -44,11 +47,16 @@ static float simTempExt() {
 
 void displaySystem() {
     struct tm timeinfo;
-    char timeStr[8] = "--:--";
+    char hhStr[4] = "--";
+    char mmStr[4] = "--";
     char dateStr[8] = "--/--";
-    if (getLocalTime(&timeinfo)) {
-        strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo);
+    bool haveTime = getLocalTime(&timeinfo);
+    bool colonOn  = true;
+    if (haveTime) {
+        strftime(hhStr,   sizeof(hhStr),   "%H",    &timeinfo);
+        strftime(mmStr,   sizeof(mmStr),   "%M",    &timeinfo);
         strftime(dateStr, sizeof(dateStr), "%d/%m", &timeinfo);
+        colonOn = (timeinfo.tm_sec % 2) == 0;
     }
 
     float volt = simVoltage();
@@ -60,12 +68,22 @@ void displaySystem() {
 
     fillScreenU(COL_BG);
 
-    // LEFT HALF — time and date, balanced top-middle-bottom.
-    // Time 16x32 zoom 3 = 240 wide × 96 tall.
-    // Date 12x24 zoom 3 = 180 wide × 72 tall.
-    // Vertical budget 320 − (96+72) = 152 → three ~51px gaps.
-    drawCenteredInU(LEFT_START, LEFT_END,  51, 2, 3, COL_AMBER, timeStr);
-    drawCenteredInU(LEFT_START, LEFT_END, 198, 1, 3, COL_AMBER, dateStr);
+    // LEFT HALF — time (DSEG7 96px) on top, date (CGROM 12x24 z3) below.
+    // DSEG7_96 line height 96, date block 72. Budget 320 − (96+72) = 152 → ~51px gaps.
+    const int timeW  = measureBitmapText(DSEG7_96, "HH:MM");
+    const int hhW    = measureBitmapText(DSEG7_96, "HH");
+    const int colonW = measureBitmapText(DSEG7_96, ":");
+    const int timeX  = LEFT_START + (LEFT_END - LEFT_START - timeW) / 2;
+    constexpr int TIME_Y = 51;
+    constexpr int DATE_Y = 198;
+
+    drawBitmapText(timeX, TIME_Y, DSEG7_96, hhStr, COL_AMBER);
+    if (colonOn) {
+        drawBitmapText(timeX + hhW, TIME_Y, DSEG7_96, ":", COL_AMBER);
+    }
+    drawBitmapText(timeX + hhW + colonW, TIME_Y, DSEG7_96, mmStr, COL_AMBER);
+
+    drawCenteredInU(LEFT_START, LEFT_END, DATE_Y, 1, 3, COL_AMBER, dateStr);
 
     // DIVIDER (exact screen center).
     fillRectU(DIV_X, DIV_Y, DIV_W, DIV_H, COL_AMBER);
