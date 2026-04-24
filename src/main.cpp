@@ -76,5 +76,6 @@ void loop() {
         lastSwitch = millis();
     }
 
+    tftTick();   // advance anti-image-sticking pixel shift
     delay(100);
 }

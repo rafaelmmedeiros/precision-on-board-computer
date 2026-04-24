@@ -41,3 +41,7 @@ void flipBuffers();
 // Semantic color pickers used by the screens.
 uint16_t tempColor(float t);       // <10°C blue, >30°C red, else amber
 uint16_t voltageColor(float v);    // undervolt/overvolt red, nominal amber, charging green
+
+// Anti-image-sticking: cycles a small per-frame drawing offset every N minutes
+// so no single LCD pixel stays on the same state for long. Call once per loop.
+void tftTick();

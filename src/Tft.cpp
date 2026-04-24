@@ -6,6 +6,10 @@
 static unsigned long g_frontFb = layer1_start_addr;
 static unsigned long g_backFb  = layer2_start_addr;
 
+// Anti-image-sticking shift. Advanced every SHIFT_INTERVAL_MS by tftTick().
+static int g_shiftX = 0;
+static int g_shiftY = 0;
+
 // --- Font helpers ----------------------------------------------------------
 
 // With Font_90_degree, the cursor advances along panel.y (= user.X) by the
@@ -39,11 +43,15 @@ static void selectFont(uint8_t fontSel, uint8_t zoom) {
 // --- Drawing ---------------------------------------------------------------
 
 void fillRectU(int ux, int uy, int uw, int uh, uint16_t color) {
+    ux += g_shiftX;
+    uy += g_shiftY;
     ER_TFT.DrawSquare_Fill(uy, ux, uy + uh, ux + uw, color);
 }
 
 void fillScreenU(uint16_t color) {
-    fillRectU(0, 0, USR_W, USR_H, color);
+    // Background covers the full panel WITHOUT the anti-stick shift so the
+    // shifted edges never reveal stale framebuffer pixels.
+    ER_TFT.DrawSquare_Fill(0, 0, USR_H, USR_W, color);
 }
 
 void drawTextU(int ux, int uy, uint8_t fontSel, uint8_t zoom,
@@ -52,7 +60,7 @@ void drawTextU(int ux, int uy, uint8_t fontSel, uint8_t zoom,
     ER_TFT.Background_color_65k(COL_BG);
     ER_TFT.CGROM_Select_Internal_CGROM();
     selectFont(fontSel, zoom);
-    ER_TFT.Goto_Text_XY(uy, ux);
+    ER_TFT.Goto_Text_XY(uy + g_shiftY, ux + g_shiftX);
     ER_TFT.Show_String((char*)s);
 }
 
@@ -103,6 +111,28 @@ uint16_t voltageColor(float v) {
     if (v < 13.5f)  return COL_AMBER;  // idle / no alternator
     if (v <= 14.8f) return COL_GOOD;   // alternator charging
     return COL_HOT;                     // overvoltage
+}
+
+// --- Anti-image-sticking ---------------------------------------------------
+
+void tftTick() {
+    static uint32_t lastShift = 0;
+    static uint8_t  phase     = 0;
+    constexpr uint32_t SHIFT_INTERVAL_MS = 5UL * 60UL * 1000UL;  // 5 min
+
+    if (millis() - lastShift < SHIFT_INTERVAL_MS) return;
+
+    // 4-corner cycle of 2-pixel shifts: no static pixel stays lit for more
+    // than one 5-minute window.
+    phase = (phase + 1) & 0x03;
+    switch (phase) {
+        default:
+        case 0: g_shiftX = 0; g_shiftY = 0; break;
+        case 1: g_shiftX = 2; g_shiftY = 0; break;
+        case 2: g_shiftX = 2; g_shiftY = 2; break;
+        case 3: g_shiftX = 0; g_shiftY = 2; break;
+    }
+    lastShift = millis();
 }
 
 // --- Bring-up --------------------------------------------------------------
