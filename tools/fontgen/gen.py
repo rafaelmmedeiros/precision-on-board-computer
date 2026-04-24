@@ -10,8 +10,6 @@ from PIL import Image, ImageDraw, ImageFont
 # (ttf_path, symbol_prefix, monospace_digits, target_heights, variation_name)
 FONTS = [
     ("DSEG7Classic-Bold.ttf",  "DSEG7C",   True,  [120], None),
-    ("DSEG7Modern-Bold.ttf",   "DSEG7M",   True,  [120], None),
-    ("Orbitron[wght].ttf",     "ORBITRON", True,  [120], b"Black"),
     ("Teko[wght].ttf",         "TEKO",     True,  [120], b"Bold"),
 ]
 CHARS = "0123456789:.-/ "

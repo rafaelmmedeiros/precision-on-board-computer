@@ -34,10 +34,8 @@ struct Candidate {
     const char* name;
 };
 static const Candidate CANDIDATES[] = {
-    { &DSEG7C_120,   "DSEG7 CLASSIC BOLD" },
-    { &DSEG7M_120,   "DSEG7 MODERN BOLD"  },
-    { &ORBITRON_120, "ORBITRON BLACK"     },
-    { &TEKO_120,     "TEKO BOLD"          },
+    { &DSEG7C_120, "DSEG7 CLASSIC BOLD" },
+    { &TEKO_120,   "TEKO BOLD"          },
 };
 static constexpr int  N_CANDIDATES = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
 static constexpr uint32_t SWAP_MS  = 10000;   // 10 s per font
