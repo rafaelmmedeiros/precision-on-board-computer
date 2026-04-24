@@ -1,41 +1,92 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <SPI.h>
+
+#include "LCD.h"
+#include "LCD_init.h"   // contains ST7701S_Initial() — include in exactly one TU
 #include "config.h"
 
 extern "C" {
     uint8_t temprature_sens_read();
 }
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define SCREEN_ADDRESS 0x3C
-
 #define NTP_SERVER "pool.ntp.org"
-#define GMT_OFFSET_SEC (-3 * 3600) // Brasília UTC-3
+#define GMT_OFFSET_SEC (-3 * 3600)  // Brasilia UTC-3
 #define DAYLIGHT_OFFSET_SEC 0
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+// Panel is 320x960 portrait (LCD_XSIZE_TFT x LCD_YSIZE_TFT from LCD.h)
+static constexpr int SCR_W = LCD_XSIZE_TFT;   // 320
+static constexpr int SCR_H = LCD_YSIZE_TFT;   // 960
 
-static char g_city[32] = "---";
-static float g_weatherTemp = NAN;
-static float g_lat = 0.0f;
-static float g_lon = 0.0f;
+// P-OBC UI palette (RGB565)
+static constexpr uint16_t COL_BG     = Black;
+static constexpr uint16_t COL_AMBER  = 0xFD02;   // approx #FCA017
+static constexpr uint16_t COL_WARN   = Red;
+
+static char     g_city[32] = "---";
+static float    g_weatherTemp = NAN;
+static float    g_lat = 0.0f;
+static float    g_lon = 0.0f;
 static uint32_t g_lastWeatherFetch = 0;
 
+// --- TFT helpers -----------------------------------------------------------
+
+// Char cell width in pixels for the built-in CGROM fonts after Xn zoom.
+// fontSel: 0=8x16, 1=12x24, 2=16x32  ; zoom: 1..4
+static int cellW(uint8_t fontSel, uint8_t zoom) {
+    int base = (fontSel == 0) ? 8 : (fontSel == 1) ? 12 : 16;
+    return base * zoom;
+}
+
+static void selectFont(uint8_t fontSel, uint8_t zoom) {
+    switch (fontSel) {
+        case 0: ER_TFT.Font_Select_8x16_16x16();   break;
+        case 1: ER_TFT.Font_Select_12x24_24x24();  break;
+        default: ER_TFT.Font_Select_16x32_32x32(); break;
+    }
+    switch (zoom) {
+        case 1: ER_TFT.Font_Width_X1(); ER_TFT.Font_Height_X1(); break;
+        case 2: ER_TFT.Font_Width_X2(); ER_TFT.Font_Height_X2(); break;
+        case 3: ER_TFT.Font_Width_X3(); ER_TFT.Font_Height_X3(); break;
+        default: ER_TFT.Font_Width_X4(); ER_TFT.Font_Height_X4(); break;
+    }
+}
+
+static void drawCentered(const char* s, int y, uint8_t fontSel, uint8_t zoom, uint16_t color) {
+    int w = (int)strlen(s) * cellW(fontSel, zoom);
+    int x = (SCR_W - w) / 2;
+    if (x < 0) x = 0;
+    ER_TFT.Foreground_color_65k(color);
+    ER_TFT.Background_color_65k(COL_BG);
+    ER_TFT.CGROM_Select_Internal_CGROM();
+    selectFont(fontSel, zoom);
+    ER_TFT.Goto_Text_XY(x, y);
+    ER_TFT.Show_String((char*)s);
+}
+
+static void fillScreen(uint16_t color) {
+    ER_TFT.DrawSquare_Fill(0, 0, SCR_W, SCR_H, color);
+}
+
+static void selectMainCanvas() {
+    ER_TFT.Select_Main_Window_16bpp();
+    ER_TFT.Main_Image_Start_Address(layer1_start_addr);
+    ER_TFT.Main_Image_Width(SCR_W);
+    ER_TFT.Main_Window_Start_XY(0, 0);
+    ER_TFT.Canvas_Image_Start_address(layer1_start_addr);
+    ER_TFT.Canvas_image_width(SCR_W);
+    ER_TFT.Active_Window_XY(0, 0);
+    ER_TFT.Active_Window_WH(SCR_W, SCR_H);
+}
+
+// --- Network / time -------------------------------------------------------
+
 void showMessage(const char* msg) {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 28);
-    display.println(msg);
-    display.display();
+    fillScreen(COL_BG);
+    drawCentered(msg, SCR_H / 2 - 32, 2, 1, COL_AMBER);
 }
 
 void connectWiFi() {
@@ -66,63 +117,15 @@ void syncTime() {
     Serial.println("Hora sincronizada!");
 }
 
-void displayDateTime() {
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
-        showMessage("Erro ao ler hora");
-        return;
-    }
-
-    char dateStr[16];
-    char timeStr[16];
-    strftime(dateStr, sizeof(dateStr), "%d/%m/%Y", &timeinfo);
-    strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
-
-    display.clearDisplay();
-
-    // "ASTRA" no topo
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.getTextBounds("ASTRA", 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 2);
-    display.print("ASTRA");
-
-    // Linha separadora
-    display.drawLine(0, 22, SCREEN_WIDTH, 22, SSD1306_WHITE);
-
-    // Data centralizada
-    display.setTextSize(1);
-    display.getTextBounds(dateStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 30);
-    display.print(dateStr);
-
-    // Hora centralizada e maior
-    display.setTextSize(2);
-    display.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 44);
-    display.print(timeStr);
-
-    display.display();
-}
-
 bool fetchLocation() {
     HTTPClient http;
     http.begin("http://ip-api.com/json/?fields=status,city,lat,lon");
     int code = http.GET();
-    if (code != 200) {
-        Serial.printf("ip-api falhou: %d\n", code);
-        http.end();
-        return false;
-    }
+    if (code != 200) { http.end(); return false; }
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, http.getString());
     http.end();
-    if (err || strcmp(doc["status"] | "", "success") != 0) {
-        Serial.println("ip-api parse falhou");
-        return false;
-    }
+    if (err || strcmp(doc["status"] | "", "success") != 0) return false;
     strlcpy(g_city, doc["city"] | "---", sizeof(g_city));
     g_lat = doc["lat"] | 0.0f;
     g_lon = doc["lon"] | 0.0f;
@@ -138,18 +141,11 @@ bool fetchWeather() {
     HTTPClient http;
     http.begin(url);
     int code = http.GET();
-    if (code != 200) {
-        Serial.printf("open-meteo falhou: %d\n", code);
-        http.end();
-        return false;
-    }
+    if (code != 200) { http.end(); return false; }
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, http.getString());
     http.end();
-    if (err) {
-        Serial.println("open-meteo parse falhou");
-        return false;
-    }
+    if (err) return false;
     g_weatherTemp = doc["current"]["temperature_2m"] | NAN;
     Serial.printf("Clima %s: %.1f C\n", g_city, g_weatherTemp);
     return true;
@@ -157,111 +153,106 @@ bool fetchWeather() {
 
 void updateWeather() {
     if (WiFi.status() != WL_CONNECTED) return;
-    if (fetchWeather()) {
-        g_lastWeatherFetch = millis();
-    }
+    if (fetchWeather()) g_lastWeatherFetch = millis();
+}
+
+// --- Screens ---------------------------------------------------------------
+
+void displayDateTime() {
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo)) { showMessage("Erro ao ler hora"); return; }
+
+    char dateStr[16], timeStr[16];
+    strftime(dateStr, sizeof(dateStr), "%d/%m/%Y", &timeinfo);
+    strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+
+    fillScreen(COL_BG);
+    drawCentered("ASTRA", 40, 2, 2, COL_AMBER);               // 32x64 chars
+    ER_TFT.Foreground_color_65k(COL_AMBER);
+    ER_TFT.DrawSquare_Fill(30, 180, SCR_W - 30, 184, COL_AMBER); // thin separator
+    drawCentered(timeStr, 260, 2, 2, COL_AMBER);              // HH:MM:SS big
+    drawCentered(dateStr, 400, 1, 2, COL_AMBER);              // DD/MM/YYYY
+}
+
+void displayCpuTemp() {
+    float tempC = (temprature_sens_read() - 32) / 1.8f;
+
+    fillScreen(COL_BG);
+    drawCentered("CPU", 60, 2, 2, COL_AMBER);
+    ER_TFT.DrawSquare_Fill(30, 200, SCR_W - 30, 204, COL_AMBER);
+
+    char tempStr[16];
+    snprintf(tempStr, sizeof(tempStr), "%.1f C", tempC);
+    drawCentered(tempStr, 300, 2, 2, COL_AMBER);
 }
 
 void displayWeather() {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    display.setTextSize(1);
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.getTextBounds(g_city, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 4);
-    display.print(g_city);
-
-    display.drawLine(0, 22, SCREEN_WIDTH, 22, SSD1306_WHITE);
+    fillScreen(COL_BG);
+    drawCentered(g_city, 60, 1, 2, COL_AMBER);
+    ER_TFT.DrawSquare_Fill(30, 180, SCR_W - 30, 184, COL_AMBER);
 
     char tempStr[16];
-    if (isnan(g_weatherTemp)) {
-        snprintf(tempStr, sizeof(tempStr), "--.- C");
-    } else {
-        snprintf(tempStr, sizeof(tempStr), "%.1f C", g_weatherTemp);
-    }
-
-    display.setTextSize(3);
-    display.getTextBounds(tempStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 34);
-    display.print(tempStr);
-
-    display.display();
+    if (isnan(g_weatherTemp)) snprintf(tempStr, sizeof(tempStr), "--.- C");
+    else                      snprintf(tempStr, sizeof(tempStr), "%.1f C", g_weatherTemp);
+    drawCentered(tempStr, 280, 2, 2, COL_AMBER);
 }
 
 void displayDutyCycleDemo() {
-    // Demo: onda triangular 0-95% com período de 2.5s
     const uint32_t period = 2500;
     uint32_t t = millis() % period;
     float phase = (float)t / period;
     float duty = (phase < 0.5f) ? (phase * 2.0f) : (2.0f - phase * 2.0f);
     duty *= 95.0f;
 
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("DUTY BICOS");
+    fillScreen(COL_BG);
+    drawCentered("DUTY BICOS", 60, 1, 2, COL_AMBER);
 
     char pctStr[8];
-    snprintf(pctStr, sizeof(pctStr), "%2d%%", (int)duty);
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.getTextBounds(pctStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor(SCREEN_WIDTH - w, 0);
-    display.print(pctStr);
+    snprintf(pctStr, sizeof(pctStr), "%d%%", (int)duty);
+    uint16_t pctColor = (duty > 75.0f) ? COL_WARN : COL_AMBER;
+    drawCentered(pctStr, 180, 2, 3, pctColor);              // 48x96 giant
 
-    const int16_t barX = 4;
-    const int16_t barY = 24;
-    const int16_t barW = SCREEN_WIDTH - 8;
-    const int16_t barH = 20;
-    display.drawRect(barX, barY, barW, barH, SSD1306_WHITE);
-    int16_t fillW = (int16_t)((barW - 4) * (duty / 100.0f));
-    display.fillRect(barX + 2, barY + 2, fillW, barH - 4, SSD1306_WHITE);
+    // Vertical bar (makes sense on a 320x960 portrait bar display)
+    const int barX = 100;
+    const int barW = SCR_W - 2 * barX;
+    const int barY = 400;
+    const int barH = 480;
+    ER_TFT.Foreground_color_65k(COL_AMBER);
+    // frame as 4 thin rectangles (no non-fill helper here)
+    ER_TFT.DrawSquare_Fill(barX,            barY,            barX + barW,     barY + 4,        COL_AMBER);
+    ER_TFT.DrawSquare_Fill(barX,            barY + barH - 4, barX + barW,     barY + barH,     COL_AMBER);
+    ER_TFT.DrawSquare_Fill(barX,            barY,            barX + 4,        barY + barH,     COL_AMBER);
+    ER_TFT.DrawSquare_Fill(barX + barW - 4, barY,            barX + barW,     barY + barH,     COL_AMBER);
 
-    display.setCursor(barX, barY + barH + 6);
-    display.print("0");
-    display.setCursor(barX + barW - 18, barY + barH + 6);
-    display.print("100");
+    int fillH = (int)((barH - 12) * (duty / 100.0f));
+    uint16_t fillColor = (duty > 75.0f) ? COL_WARN : COL_AMBER;
+    // fill grows from the bottom up
+    ER_TFT.DrawSquare_Fill(barX + 6, barY + barH - 6 - fillH,
+                           barX + barW - 6, barY + barH - 6, fillColor);
 
-    display.display();
+    drawCentered("0",   barY + barH + 20, 0, 2, COL_AMBER);
+    drawCentered("100", barY - 50,        0, 2, COL_AMBER);
 }
 
-void displayCpuTemp() {
-    float tempC = (temprature_sens_read() - 32) / 1.8f;
-
-    display.clearDisplay();
-
-    display.setTextSize(2);
-    display.setTextColor(SSD1306_WHITE);
-    int16_t x1, y1;
-    uint16_t w, h;
-    display.getTextBounds("CPU", 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 2);
-    display.print("CPU");
-
-    display.drawLine(0, 22, SCREEN_WIDTH, 22, SSD1306_WHITE);
-
-    char tempStr[16];
-    snprintf(tempStr, sizeof(tempStr), "%.1f C", tempC);
-
-    display.setTextSize(3);
-    display.getTextBounds(tempStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor((SCREEN_WIDTH - w) / 2, 34);
-    display.print(tempStr);
-
-    display.display();
-}
+// --- Arduino entry points --------------------------------------------------
 
 void setup() {
     Serial.begin(115200);
+    delay(200);
+    Serial.println("\n[P-OBC] boot");
 
-    if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-        Serial.println("Falha ao inicializar o display SSD1306");
-        while (true);
-    }
+    // LT7680 bring-up (order from BuyDisplay demo)
+    ER_TFT.Parallel_Init();          // SPI pins
+    ER_TFT.HW_Reset();
+    ER_TFT.System_Check_Temp();
+    delay(100);
+    while (ER_TFT.LCD_StatusRead() & 0x02) { /* wait TASK_BUSY */ }
+    ER_TFT.initial();                // LT7680 PLL/SDRAM/TCON
+    ST7701S_Initial();               // ST7701S panel config (SW-SPI on GPIO 17/14/4)
+    ER_TFT.Display_ON();
+
+    selectMainCanvas();
+    fillScreen(COL_BG);
 
     connectWiFi();
     syncTime();
@@ -278,20 +269,17 @@ void loop() {
     static uint32_t lastSwitch = 0;
 
     switch (screen) {
-        case 0: displayDateTime(); break;
-        case 1: displayCpuTemp(); break;
-        case 2: displayWeather(); break;
-        case 3: displayDutyCycleDemo(); break;
+        case 0: displayDateTime();       break;
+        case 1: displayCpuTemp();        break;
+        case 2: displayWeather();        break;
+        case 3: displayDutyCycleDemo();  break;
     }
 
     if (millis() - lastSwitch >= 5000) {
         screen = (screen + 1) % 4;
         lastSwitch = millis();
     }
-
-    if (millis() - g_lastWeatherFetch >= 10UL * 60UL * 1000UL) {
-        updateWeather();
-    }
+    if (millis() - g_lastWeatherFetch >= 10UL * 60UL * 1000UL) updateWeather();
 
     delay(100);
 }
