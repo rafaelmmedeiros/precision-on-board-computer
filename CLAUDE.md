@@ -12,6 +12,15 @@ O programador tem experiência em programação mas é iniciante em sistemas emb
 
 Desenvolvedor não irá perder oportunidade de fazer melhor que BMW.
 
+## Metodologia de Trabalho
+
+Projeto **não tem plano mestre fechado**. Avança de forma iterativa, com o material que estiver à mão no momento (peças que chegaram, ideias novas, restrições descobertas). As "Fases" abaixo são roteiro geral, não cronograma rígido — pula-se de tópico conforme conveniência (ex.: enquanto sensores não chegam, foca em UI simulada e firmware de input).
+
+Implicações práticas:
+- Não cobrar sequenciamento das fases; sugerir o que faz sentido **agora** dado o que está disponível.
+- Decisões que dependem de hardware ausente ficam em aberto — registrar como "pendente" em vez de forçar.
+- Protótipos descartáveis são bem-vindos para validar feeling/UX antes de comprometer com layout final.
+
 ## Hardware
 
 - **MCU:** ESP32 WROOM-32, 38 pinos
@@ -31,20 +40,36 @@ Desenvolvedor não irá perder oportunidade de fazer melhor que BMW.
 
 ## Mapa de Pinos ESP32
 
+Atribuição tentativa cobrindo Fase 1-4. Não é final, mas é o caminho de trabalho. 19 pinos atribuídos, sobra folga (GPIOs 13, 14, 39 input-only livres). Sem necessidade de expansor I²C ou shift register para o escopo atual.
+
 | Função | GPIO | Notas |
 |--------|------|-------|
-| I2C SDA (display/RTC) | 21 | Padrão Wire |
-| I2C SCL (display/RTC) | 22 | Padrão Wire |
+| I²C SDA (display, RTC) | 21 | Padrão Wire |
+| I²C SCL (display, RTC) | 22 | Padrão Wire |
+| Voltímetro + chave ligada | 32 | ADC1, divisor 14.4V→3.3V. Threshold >8V = ignição ligada (combo: economiza pino) |
 | Injeção (bicos) | 34 | Input-only, interrupt, divisor 5V→3.3V |
-| VSS (velocidade) | 36 (VP) | Input-only, interrupt |
-| Voltímetro carro | 32 | ADC1, divisor 14.4V→3.3V |
-| Buzzer | a definir | PWM |
-| DS18B20 (temp) | a definir | OneWire |
-| SD Card (SPI) | a definir | VSPI padrão |
-| GPS (Serial) | a definir | UART2 |
-| Botão R (navegação) | a definir | Pull-up interno |
-| Botão S (reset viagem) | a definir | Pull-up interno |
-| Dimmer backlight | a definir | PWM |
+| VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
+| Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi ligado) |
+| GPS RX | 16 | UART2 |
+| GPS TX | 17 | UART2 |
+| Farol aceso | 35 | Input-only. Usar opto-acoplador (PC817) em vez de divisor — isolamento galvânico contra rede suja do carro |
+| Botão R (navegação) | 25 | Pull-up interno |
+| Botão S (reset viagem) | 26 | Pull-up interno |
+| Buzzer | 27 | PWM (LEDC) |
+| DS18B20 ×2 (interna + externa) | 4 | OneWire, ambos sensores no mesmo bus, endereçados por ROM ID 64-bit. Anotar qual ROM ID é interno/externo no firmware |
+| Dimmer backlight | 2 | PWM (LED onboard, OK para PWM) |
+| SD CS | 15 | VSPI |
+| Display CS | 5 | VSPI |
+| SPI MOSI | 23 | VSPI compartilhado SD + display |
+| SPI MISO | 19 | VSPI compartilhado |
+| SPI SCK | 18 | VSPI compartilhado |
+
+**Notas de design:**
+
+- **Voltímetro como sinal de ignição:** mesmo pino lê tensão do sistema E detecta chave ligada via threshold. Bônus: detecta cranking (queda durante partida) e alternador morto (<13V com motor ligado). Mesma abordagem que OBCs OEM usam.
+- **DS18B20 num bus só:** dois sensores compartilham GPIO 4. Identificar ROM ID de cada um uma vez no firmware e fixar.
+- **SPI compartilhado SD + display:** funciona com chip selects disciplinados. Se logging SD brigar com framerate, mover SD para HSPI (pinos 14/12/13).
+- **Expansão futura se faltar pino:** PCF8574 / MCP23017 (expansor I²C, +8/+16 pinos no barramento existente) ou ADS1115 (ADC 16-bit I²C, melhor que o ADC nativo do ESP32 — vale a pena para sensor de pressão MHPS-10 da Fase 4 só pela qualidade).
 
 ## Sinais do Carro
 

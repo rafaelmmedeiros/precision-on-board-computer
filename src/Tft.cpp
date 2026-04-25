@@ -92,6 +92,13 @@ void targetBackBuffer() {
 
 void flipBuffers() {
     ER_TFT.Main_Image_Start_Address(g_backFb);
+    // The LT7680 latches the new scanout address on its next vsync (~16 ms
+    // at 60 Hz panel rate). Until then the panel is still reading from the
+    // old buffer — which is about to become our new back buffer. Waiting
+    // here guarantees the next draw mutates a buffer the panel is no longer
+    // scanning, eliminating the partial-frame flicker on heavy screens
+    // whose draws span multiple panel frames.
+    delay(20);
     unsigned long tmp = g_frontFb;
     g_frontFb = g_backFb;
     g_backFb  = tmp;

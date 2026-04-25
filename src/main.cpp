@@ -5,16 +5,33 @@
 
 #include "Tft.h"
 #include "BootScreen.h"
+#include "Buttons.h"
+#include "ResetScreen.h"
 #include "SystemScreen.h"
 #include "ConsumptionScreen.h"
+#include "DutyScreen.h"
 #include "config.h"
 
 #define NTP_SERVER          "pool.ntp.org"
 #define GMT_OFFSET_SEC      (-3 * 3600)   // Brasília UTC-3
 #define DAYLIGHT_OFFSET_SEC 0
 
-static constexpr uint32_t SYSTEM_DWELL_MS      = 5UL * 1000UL;
-static constexpr uint32_t CONSUMPTION_DWELL_MS = 60UL * 1000UL;
+// --- Screen registry -------------------------------------------------------
+
+struct ScreenDef {
+    void     (*draw)();
+    ResetSet (*resets)();
+};
+
+static const ScreenDef SCREENS[] = {
+    { displaySystem,      systemResets      },
+    { displayConsumption, consumptionResets },
+    { displayDuty,        dutyResets        },
+};
+static constexpr uint8_t SCREEN_COUNT  = sizeof(SCREENS) / sizeof(SCREENS[0]);
+static constexpr uint8_t HOME_SCREEN   = 1;   // ConsumptionScreen — main / "home"
+
+static uint8_t g_screen = HOME_SCREEN;
 
 // --- Boot messages ---------------------------------------------------------
 
@@ -57,6 +74,46 @@ static void syncTime() {
     Serial.println("Hora sincronizada.");
 }
 
+// --- Input → navigation ----------------------------------------------------
+
+static void handleNavEvent(ButtonEvent ev) {
+    switch (ev) {
+        case BTN_EV_R_TAP:
+            g_screen = (g_screen + SCREEN_COUNT - 1) % SCREEN_COUNT;
+            break;
+        case BTN_EV_S_TAP:
+            g_screen = (g_screen + 1) % SCREEN_COUNT;
+            break;
+        case BTN_EV_R_HOLD: {
+            const ResetSet rs = SCREENS[g_screen].resets();
+            resetScreenEnter(rs);
+            break;
+        }
+        case BTN_EV_S_HOLD:
+            g_screen = HOME_SCREEN;
+            break;
+        default:
+            break;
+    }
+}
+
+// Thin amber/green progress bar at the very bottom of the screen so the
+// driver gets immediate feedback that a hold is in progress (and how much
+// longer they need to keep pressing). R = amber (destructive intent),
+// S = green (navigation home).
+static void drawHoldOverlay() {
+    const uint32_t hr = buttonHoldMs(BTN_R);
+    const uint32_t hs = buttonHoldMs(BTN_S);
+    if (hr == 0 && hs == 0) return;
+    const ButtonId active   = (hr >= hs) ? BTN_R : BTN_S;
+    const uint32_t held     = (hr > hs) ? hr : hs;
+    const uint32_t threshold = buttonsGetHoldMs(active);
+    const uint16_t color    = (active == BTN_R) ? COL_AMBER : COL_GOOD;
+    if (threshold == 0) return;
+    const int w = (int)((uint64_t)USR_W * held / threshold);
+    if (w > 0) fillRectU(0, USR_H - 3, w, 3, color);
+}
+
 // --- Arduino entry points --------------------------------------------------
 
 void setup() {
@@ -64,6 +121,7 @@ void setup() {
     delay(200);
     Serial.println("\n[P-OBC] boot");
 
+    buttonsInit();
     tftInit();
     displayBoot();
     connectWiFi();
@@ -71,24 +129,46 @@ void setup() {
     syncTime();
 }
 
+// Target frame period. Heaviest screen (Consumption: DSEG7 hero + 12 bars +
+// footer) takes ~60-70 ms to render plus the 20 ms vsync-latch wait inside
+// flipBuffers, so the loop is padded up to this value. Light screens (Duty)
+// wait the rest. Result: every screen iterates at the same rate, animations
+// look uniform, and the hold-bar overlay feels consistent across screens.
+static constexpr uint32_t FRAME_PERIOD_MS = 100;
+
 void loop() {
-    static uint8_t  screen = 0;
-    static uint32_t lastSwitch = 0;
-    static const uint32_t dwell[] = { SYSTEM_DWELL_MS, CONSUMPTION_DWELL_MS };
+    const uint32_t frameStartMs = millis();
+
+    // Contextual hold thresholds:
+    //   - Outside the modal, S is "go home" — a fast, non-destructive nav
+    //     gesture, so 1.5 s feels right (3 s was tedious for navigation).
+    //   - Inside the modal, S confirms reset[1] — destructive, deserves the
+    //     full 3 s margin to avoid accidents. R stays at 3 s everywhere
+    //     since it's always the entry to a destructive flow.
+    buttonsSetHoldMs(BTN_R, BUTTONS_HOLD_DEFAULT_MS);
+    buttonsSetHoldMs(BTN_S, resetScreenActive() ? BUTTONS_HOLD_DEFAULT_MS
+                                                : BUTTONS_HOLD_NAV_MS);
+
+    const ButtonEvent ev = buttonsPoll();
+
+    if (resetScreenActive()) {
+        resetScreenTick(ev);
+    } else {
+        handleNavEvent(ev);
+    }
 
     targetBackBuffer();
-    switch (screen) {
-        case 0: displaySystem();      break;
-        case 1: displayConsumption(); break;
+    if (resetScreenActive()) {
+        displayReset();
+    } else {
+        SCREENS[g_screen].draw();
+        drawHoldOverlay();
     }
     flipBuffers();
 
-    if (millis() - lastSwitch >= dwell[screen]) {
-        screen = (screen + 1) % 2;
-        lastSwitch = millis();
-    }
-
     ArduinoOTA.handle();
-    tftTick();   // advance anti-image-sticking pixel shift
-    delay(100);
+    tftTick();
+
+    const uint32_t elapsed = millis() - frameStartMs;
+    if (elapsed < FRAME_PERIOD_MS) delay(FRAME_PERIOD_MS - elapsed);
 }

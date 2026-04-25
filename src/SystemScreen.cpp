@@ -150,3 +150,7 @@ void displaySystem() {
     (void)LEFT_MID;   // kept for future hand-aligned elements
     (void)RIGHT_MID;
 }
+
+ResetSet systemResets() {
+    return { 0, { { nullptr, nullptr }, { nullptr, nullptr } } };
+}

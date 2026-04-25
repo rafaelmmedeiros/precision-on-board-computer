@@ -4,7 +4,6 @@
 #include "Fonts.h"
 
 #include <Arduino.h>
-#include <math.h>
 #include <stdio.h>
 
 // --- Layout constants ------------------------------------------------------
@@ -251,4 +250,25 @@ void displayConsumption() {
 
     snprintf(buf, sizeof(buf), "%d:%02d", tripH, tripM);
     drawTextU(USR_W - 140, FOOTER_Y, 1, 2, COL_AMBER, buf);
+}
+
+// --- Reset hooks -----------------------------------------------------------
+
+void consumptionResetTrip() {
+    const uint32_t now = millis();
+    g_tripStartMs = now;
+    g_tripLastMs  = now;
+    g_tripKm      = 0.0f;
+    g_tripL       = 0.0f;
+    g_tripInited  = true;
+}
+
+ResetSet consumptionResets() {
+    return {
+        1,
+        {
+            { "Viagem",  &consumptionResetTrip },
+            { nullptr,   nullptr               },
+        }
+    };
 }

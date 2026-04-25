@@ -36,3 +36,7 @@ void displayDuty() {
     drawTextU(barX,             barY + barH + 20, 0, 1, COL_AMBER, "0");
     drawTextU(barX + barW - 24, barY + barH + 20, 0, 1, COL_AMBER, "100");
 }
+
+ResetSet dutyResets() {
+    return { 0, { { nullptr, nullptr }, { nullptr, nullptr } } };
+}
