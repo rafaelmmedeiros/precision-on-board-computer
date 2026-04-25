@@ -20,6 +20,13 @@
 void telemetryInit();
 void telemetryTick();
 
+// Tells Telemetry that the MCU is about to enter sleep (or has just woken
+// from one) and any wall-clock delta accumulated since the last tick must
+// be discarded. Without this, the resume tick would see a huge dt and
+// inflate trip integrators with phantom kilometers. Safe to call multiple
+// times back-to-back.
+void telemetryPause();
+
 // --- Live readings -------------------------------------------------------
 
 float telemetrySpeedKmh();        // current speed
@@ -57,3 +64,19 @@ void  telemetryGetKmLStats(float& mean, float& stddev);
 // --- Resets --------------------------------------------------------------
 
 void telemetryResetTrip();
+
+// --- Stash restore -------------------------------------------------------
+// Used by TripLog when an in-progress trip is recovered from NVS after a
+// reset that happened during the grace window (rare — light sleep keeps
+// RAM, so this only matters for brownouts). History bars and the in-flight
+// 5-min period accumulator are NOT restored: those are cosmetic and a
+// fresh start is acceptable. The trip totals (the user-visible numbers)
+// are preserved.
+
+void telemetryRestoreTrip(uint32_t startUnix,
+                          uint32_t durationSec,
+                          float    km,
+                          float    liters,
+                          float    minKmL,
+                          float    maxKmL,
+                          float    tankL);

@@ -115,18 +115,19 @@ pio run -t clean                         # Limpa build
 - **RTC:** DS3231 com bateria CR2032
 - **Temperatura:** DS18B20 × 2 (interna + externa, OneWire)
 - **GPS:** NEO-8M com antena externa
-- **Alimentação:** Buck DC-DC automotivo (LM2596 / MP1584), saída dupla 5V (ESP32) + 3.3V (display e periféricos), entrada 12-14.4V do carro com fusível 1A
+- **Alimentação:** Buck DC-DC automotivo (LM2596 / MP1584), saída dupla 5V (ESP32) + 3.3V (display e periféricos). **Entrada 12-14.4V vem da bateria direta com fusível 1A** (NÃO mais do 12V chaveado), porque o ESP32 fica energizado 100% do tempo, igual TID/MID factory. Estado de ignição é lido por sinal digital separado em GPIO 13, não pela presença/ausência de tensão de alimentação. Quiescent target: ~10 µA em deep sleep, ~1 mA em light sleep, ~80 mA em ACTIVE.
 - **Buzzer:** piezo passivo (não montado ainda)
 
 ### 4.2 Mapa de pinos ESP32
 
-19 pinos atribuídos. GPIOs 13, 14, 39 input-only sobram. Sem necessidade de expansor I²C ou shift register no escopo atual.
+20 pinos atribuídos. GPIOs 14 (HSPI_CLK, reservado pra display em algumas placas) e 39 (input-only, sem pull interno) sobram livres no SoC. Sem necessidade de expansor I²C ou shift register no escopo atual.
 
 | Função | GPIO | Notas |
 |--------|------|-------|
 | I²C SDA (display, RTC) | 21 | Padrão Wire |
 | I²C SCL (display, RTC) | 22 | Padrão Wire |
-| Voltímetro + chave ligada | 32 | ADC1, divisor 14.4V→3.3V. Threshold >8V = ignição ligada |
+| Voltímetro | 32 | ADC1, divisor 14.4V→3.3V. Mede só voltagem da bateria/alternador (>13V = carregando, <12V = só bateria). Não detecta mais ignição. |
+| Sinal de ignição | 13 | Digital, active-low. `INPUT_PULLUP` interno + chave/opto pra GND, mesma topologia dos botões R/S. RTC-capable → usado como `ext0` wake source pra deep sleep. NÃO é strapping pin. Bench: chave do protoboard. Produção: PC817 com coletor→GPIO 13, emissor→GND, LED do opto recebe 12V chaveado. |
 | Injeção (bicos) | 34 | Input-only, interrupt, divisor 5V→3.3V |
 | VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
 | Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi) |
@@ -145,7 +146,7 @@ pio run -t clean                         # Limpa build
 
 **Notas de design:**
 
-- **Voltímetro como sinal de ignição:** mesmo pino lê tensão e detecta ignição via threshold. Bônus: detecta cranking (queda durante partida) e alternador morto (<13V com motor ligado).
+- **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. GPIO 14 fica reservado pelo HSPI_CLK do controlador de display em alguns breakouts, por isso a ignição foi pra GPIO 13. Antes da arquitetura always-on, a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
 - **DS18B20 num bus só:** dois sensores compartilham GPIO 4. Identificar ROM ID de cada uma vez no firmware.
 - **Expansão futura:** PCF8574/MCP23017 (expansor I²C) ou ADS1115 (ADC 16-bit, vale a pena pro MHPS-10 da Fase 4).
 
@@ -153,7 +154,8 @@ pio run -t clean                         # Limpa build
 
 - **Pino 27 ECU** → fio PT/MR → sinal de injeção (pulse width em µs) → GPIO 34
 - **VSS painel** → velocidade via k-factor calibrado por GPS → GPIO 36
-- **Divisor resistivo 12-14.4V** → ADC ESP32 → GPIO 32 (voltímetro + ignição)
+- **Divisor resistivo 12-14.4V** → ADC ESP32 → GPIO 32 (voltímetro)
+- **12V chaveado pela chave de ignição** → opto PC817 (LED) → coletor opto → GPIO 13 (active-low, sinal digital de ignição)
 
 ---
 
@@ -163,19 +165,28 @@ pio run -t clean                         # Limpa build
 
 ```
 main.cpp
-  ├─ telemetryTick()        ← uma vez por loop, antes de qualquer render
-  ├─ buttonsPoll() → ev     ← input do usuário
-  ├─ resetScreenActive() ?  ← se modal ativa, encaminha pro modal
+  ├─ powerTick()            ← state machine de ignição, primeira coisa do loop
+  ├─ switch (powerCurrent()):
+  │     ACTIVE              → telemetryTick + UI normal
+  │     POST_TRIP_SUMMARY   → render TripSummaryScreen, sem telemetryTick
+  │     GRACE               → blank + esp_light_sleep_start()
+  │     DEEP_SLEEP_PENDING  → blank + esp_deep_sleep_start()
+  ├─ buttonsPoll() → ev     ← input do usuário (só ACTIVE/POST_TRIP_SUMMARY)
   └─ SCREENS[g_screen].draw()
 
-Telemetry  ──reads──>  Features (flags)
+PowerState ──reads──> GPIO 13 (ignição, ext0 wake) ──> Features (timeouts)
+   │
+   └─ chama tripLogStashInProgress / tripLogFinishCurrentTrip
+
+Telemetry  ──reads──>  Features (flags + BENCH_TIME_SCALE)
    ▲
    │ getters (read-only)
    │
    ├─ ConsumptionScreen
    ├─ AutonomyScreen
    ├─ SystemScreen
-   └─ HistoryScreen ──reads──> TripLog (NVS persistence)
+   ├─ HistoryScreen ──reads──> TripLog (NVS persistence + stash slot)
+   └─ TripSummaryScreen (só durante POST_TRIP_SUMMARY)
 
 Buttons → main → ResetScreen (modal contextual)
                     │
@@ -228,7 +239,7 @@ Telas **não** mantêm estado entre frames além de UI ephemera (cursor, animaç
 - Tap = cancela; Hold confirma a opção respectiva
 - Toast "X RESETADO" ao confirmar, depois fecha
 
-### 5.5 Features.h — flags de sensor + fast-forward
+### 5.5 Features.h — flags de sensor + fast-forward + power timeouts
 
 `include/Features.h`, namespace `pobc`:
 
@@ -239,12 +250,18 @@ constexpr bool USE_REAL_VOLTAGE      = false; // GPIO 32
 constexpr bool USE_REAL_FUEL_LEVEL   = false; // GPIO 33 (boia)
 constexpr bool USE_REAL_TEMP_SENSORS = false; // GPIO 4 (DS18B20)
 constexpr bool USE_REAL_GPS          = false; // UART2
+constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 (digital active-low)
 constexpr float BENCH_TIME_SCALE     = 60.0f; // 1 real sec = 1 sim min
+
+constexpr uint32_t POST_TRIP_SUMMARY_MS                = 60UL * 1000UL;        // 60 s
+constexpr uint32_t GRACE_PERIOD_MS                     = 60UL * 60UL * 1000UL; // 1 h
+constexpr uint32_t BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE = 10UL * 1000UL;        // 10 s na bancada
+constexpr uint32_t BENCH_GRACE_MS_OVERRIDE             = 30UL * 1000UL;        // 30 s na bancada
 ```
 
 Telemetry usa `if constexpr` nessas flags. Branches mortos somem do binário em compile time — zero custo de runtime.
 
-Quando todas as flags forem true, `BENCH_TIME_SCALE` colapsa pra 1.0 e a sim para. Hoje na bancada todas false — o sim corre 60x acelerado pra animar o medidor de tanque em minutos em vez de horas.
+Quando todas as flags forem true, `BENCH_TIME_SCALE` colapsa pra 1.0 e a sim para. Hoje na bancada todas false — o sim corre 60x acelerado pra animar o medidor de tanque em minutos em vez de horas. Os dois overrides `BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE` e `BENCH_GRACE_MS_OVERRIDE` colapsam pros valores reais (`POST_TRIP_SUMMARY_MS` / `GRACE_PERIOD_MS`) quando `USE_REAL_IGNITION` é true — produção sempre usa 60s + 1h.
 
 ### 5.6 Layout.h — rails compartilhados
 
@@ -262,10 +279,26 @@ Telas declaram `using namespace pobc;` e aplicam direto. Ajuste global = uma con
 - Buffer FIFO de `TRIP_LOG_MAX = 12` registros
 - `TripRecord` = 28 bytes (validado por `static_assert`)
 - Persistido como blob único na namespace `triplog` do NVS
-- Escrita só em `tripLogFinishCurrentTrip()` (manual encerramento, futuramente auto via ignição-off > 1h)
+- Escrita em `tripLogFinishCurrentTrip()` — gatilhos: encerramento manual via Hold-R em Consumption, OU automático após 1h de chave desligada (PowerState GRACE expirado)
+- **Stash slot** (`KEY_STASH`): snapshot da viagem em curso, escrito por `tripLogStashInProgress()` na transição POST_TRIP_SUMMARY → GRACE. Brownout durante GRACE não perde a viagem — `tripLogConsumeStashOrFinalize()` no boot frio decide entre restaurar (se < `GRACE_PERIOD_MS` desde o stash, via `time(nullptr)`/DS3231) ou finalizar no log
 - Recovery: blob corrompido ou parcial no boot → log começa zerado
 
 NVS é a escolha pra estado persistente do projeto. SD card e exportação foram explicitamente removidos do escopo.
+
+### 5.8 PowerState — state machine de ignição
+
+`include/PowerState.h` + `src/PowerState.cpp`. Sempre ativo no `loop()` antes de qualquer outra coisa.
+
+Estados: `ACTIVE`, `POST_TRIP_SUMMARY`, `GRACE`, `DEEP_SLEEP_PENDING`. Transições:
+
+- **ACTIVE → POST_TRIP_SUMMARY:** GPIO 13 vai pra HIGH (ignição off). `telemetryTick()` para de ser chamado — engine off não deve avançar integradores.
+- **POST_TRIP_SUMMARY → ACTIVE:** GPIO 13 volta pra LOW dentro de 60s. Viagem **continua intacta**, sem stash, sem reset.
+- **POST_TRIP_SUMMARY → GRACE:** 60s expirados ou tap em qualquer botão. Stash da viagem em NVS, `telemetryPause()`, blank no display, `esp_light_sleep_start()`.
+- **GRACE → ACTIVE:** wake do light sleep (ext0 GPIO 13 LOW ou timer 250ms periódico) e ignição estável LOW. Limpa stash, retoma a viagem.
+- **GRACE → DEEP_SLEEP_PENDING:** 1h esgotada (`GRACE_PERIOD_MS` em produção, `BENCH_GRACE_MS_OVERRIDE` na bancada). Limpa stash, `tripLogFinishCurrentTrip()` (fica no histórico), próximo loop chama `esp_deep_sleep_start()` com `rtc_gpio_pullup_en` + ext0.
+- **(boot) → ACTIVE / DEEP_SLEEP_PENDING:** `powerInit()` lê GPIO 13, decide. Se `ESP_RST_DEEPSLEEP`, pula WiFi/NTP no `setup()` pra wake instantâneo.
+
+Debounce: 50 ms na leitura digital. Sleep deltas no `telemetryTick()` são clampados (>5s = descartado) como rede de segurança independente do `telemetryPause()` explícito.
 
 ---
 
@@ -274,7 +307,7 @@ NVS é a escolha pra estado persistente do projeto. SD card e exportação foram
 ### 6.1 Coordenadas, paleta, fontes
 
 - **Sistema de coords (user-space, `Tft.h`):** `USR_W = 960` × `USR_H = 320`, origem top-left
-- **Mount:** `Font_90_degree` + `VDIR=1` (ver seção 8.2 sobre rotação)
+- **Mount:** `Font_90_degree` + `VDIR=1` (compensa H-flip embutido no modo 90°)
 - **Paleta** (`Tft.h`):
   - `COL_BG` preto puro
   - `COL_AMBER` (#FCA017) — texto e UI base
@@ -319,7 +352,7 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 **Fase 1 — Bancada (sem carro):** RTC DS3231 + NTP fallback, temps DS18B20, voltímetro, dimmer PWM. UI completa rodando sobre simulação (estado atual).
 
-**Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS, threshold de ignição no voltímetro. **Detecção automática de viagem** (ignição off > 1h = nova viagem) liga aqui.
+**Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS. Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState (§5.8) — quando o opto for montado, basta `USE_REAL_IGNITION=true`.
 
 **Fase 3 — GPS:** altitude, inclinação, heading, velocidade independente, NTP→GPS pra hora atômica.
 
@@ -327,7 +360,7 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 ### 7.2 Decisões em aberto
 
-(nenhuma no momento)
+- **Desligar o display em GRACE / DEEP_SLEEP** — hoje o firmware blanqueia o framebuffer (preto) antes de entrar em sleep, mas o LT7680 e a backlight continuam energizados pelo rail 3.3V/5V permanente. Pra atingir o consumo-alvo de ~10 µA em deep sleep, o display precisa ser desligado de fato. Caminhos prováveis: MOSFET no rail do display chaveado por um GPIO, ou um pino de enable do LT7680 (ver datasheet). Decisão depende de eletrônica — ainda não definida.
 
 ---
 
@@ -379,9 +412,10 @@ platformio.ini  — config (board, deps, flags)
 
 | Módulo | Papel |
 |--------|-------|
-| `main.cpp` | setup/loop, init, dispatch de tela, roteamento de input |
-| `Telemetry.{h,cpp}` | dona do estado do veículo, sim de regime, integradores, histórico |
-| `Features.h` | flags por sensor, BENCH_TIME_SCALE |
+| `main.cpp` | setup/loop, init, dispatch por PowerState, roteamento de input, entradas de light/deep sleep |
+| `PowerState.{h,cpp}` | state machine de ignição (ACTIVE / POST_TRIP_SUMMARY / GRACE / DEEP_SLEEP_PENDING), debounce GPIO 13 |
+| `Telemetry.{h,cpp}` | dona do estado do veículo, sim de regime, integradores, histórico, pause/restore pra sleep |
+| `Features.h` | flags por sensor, BENCH_TIME_SCALE, timeouts da power state machine |
 | `Buttons.{h,cpp}` | input R/S debounce, tap, hold, threshold por botão |
 | `ResetScreen.{h,cpp}` | modal contextual de resets |
 | `Screens.h` | tipos `ResetOption` / `ResetSet` |
@@ -394,6 +428,7 @@ platformio.ini  — config (board, deps, flags)
 | `ConsumptionScreen` | km/L instantâneo + histórico 5 min + viagem atual |
 | `AutonomyScreen` | range estimado (com ±confidence) + tanque |
 | `HistoryScreen` | gráfico das últimas 12 viagens encerradas |
-| `TripLog.{h,cpp}` | persistência NVS do log de viagens |
+| `TripSummaryScreen.{h,cpp}` | resumo da viagem encerrada (visível só durante POST_TRIP_SUMMARY) |
+| `TripLog.{h,cpp}` | persistência NVS do log de viagens + stash slot pra recuperação após brownout em GRACE |
 | `lib/LT7680/` | driver vendor do controller LT7680 |
 | `include/config.h` | credenciais WiFi (gitignored) |

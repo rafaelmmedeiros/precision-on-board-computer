@@ -32,3 +32,25 @@ void tripLogClear();                // wipes log (used by HistoryScreen reset)
 
 int                 tripLogCount();
 const TripRecord&   tripLogAt(int i);   // i=0 oldest, count-1 newest
+
+// --- In-progress stash -----------------------------------------------------
+//
+// Brownout safety net for the GRACE state. Light sleep keeps RAM, so the
+// stash is normally untouched — but if the ESP32 resets while waiting for
+// the driver to come back, NVS is the only place the in-flight trip
+// survives. PowerState saves on the way into GRACE and clears either when
+// the trip resumes (ignition back within grace) or when it's finalized.
+
+void tripLogStashInProgress();         // snapshot Telemetry trip → NVS
+void tripLogClearStash();               // remove stash from NVS
+bool tripLogHasStash();                 // true if NVS has a stash record
+
+// Boot-time recovery. If a stash exists:
+//   - and time(nullptr) shows it's still within GRACE_PERIOD_MS → restore
+//     the trip into Telemetry, clear the stash, return true
+//   - and it's older than GRACE_PERIOD_MS → finalize into the log,
+//     clear the stash, return false
+//   - and the stash timestamp is 0 (NTP wasn't synced when it was written)
+//     → conservative path: finalize into the log, return false
+// Returns false if no stash present.
+bool tripLogConsumeStashOrFinalize();

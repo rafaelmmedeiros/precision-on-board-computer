@@ -118,9 +118,21 @@ void telemetryInit() {
     g_tripMaxKmL    = 0.0f;
 }
 
+void telemetryPause() {
+    // Reset the wall-clock anchor so the next tick produces a near-zero
+    // delta. Used around sleep boundaries (POST_TRIP_SUMMARY → GRACE,
+    // GRACE wake) so dormant time never enters trip integrators.
+    g_lastRealMs = millis();
+}
+
 void telemetryTick() {
-    const uint32_t now       = millis();
-    const float    realDtSec = (now - g_lastRealMs) / 1000.0f;
+    const uint32_t now    = millis();
+    uint32_t       deltaMs = now - g_lastRealMs;
+    // Defensive clamp: a delta over 5 s means we just woke from sleep or
+    // missed several frames. Either way, integrating it would inject a
+    // phantom kilometer into the trip. Drop the gap.
+    if (deltaMs > 5000UL) deltaMs = 0;
+    const float realDtSec = deltaMs / 1000.0f;
     g_lastRealMs = now;
 
     const float scale = effectiveScale();
@@ -252,6 +264,30 @@ void telemetryResetTrip() {
     g_tripStartUnix = (uint32_t)time(nullptr);
     g_tripMinKmL    = 0.0f;
     g_tripMaxKmL    = 0.0f;
+    for (int i = 0; i < TELEMETRY_HIST_N; ++i) g_history[i] = 0.0f;
+    g_populated   = 0;
+    g_periodSimMs = 0;
+    g_periodSum   = 0.0;
+    g_periodN     = 0;
+}
+
+void telemetryRestoreTrip(uint32_t startUnix,
+                          uint32_t durationSec,
+                          float    km,
+                          float    liters,
+                          float    minKmL,
+                          float    maxKmL,
+                          float    tankL) {
+    g_tripStartUnix = startUnix;
+    g_tripSimSec    = (double)durationSec;
+    g_tripKm        = (double)km;
+    g_tripL         = (double)liters;
+    g_tripMinKmL    = minKmL;
+    g_tripMaxKmL    = maxKmL;
+    g_tankL         = tankL;
+    // History and the 5-min period accumulator are deliberately not
+    // restored — they're cosmetic and starting fresh after a brownout
+    // recovery is fine.
     for (int i = 0; i < TELEMETRY_HIST_N; ++i) g_history[i] = 0.0f;
     g_populated   = 0;
     g_periodSimMs = 0;
