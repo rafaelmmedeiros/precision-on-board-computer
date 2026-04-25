@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "Tft.h"
+#include "BootScreen.h"
 #include "SystemScreen.h"
 #include "DutyScreen.h"
 #include "config.h"
@@ -25,7 +26,6 @@ static void showMessage(const char* msg) {
 }
 
 static void connectWiFi() {
-    showMessage("Conectando WiFi...");
     Serial.print("Conectando ao WiFi");
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
@@ -35,8 +35,6 @@ static void connectWiFi() {
     Serial.println(" conectado!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
-    showMessage("WiFi conectado!");
-    delay(800);
 }
 
 static void setupOTA() {
@@ -50,7 +48,6 @@ static void setupOTA() {
 }
 
 static void syncTime() {
-    showMessage("Sincronizando hora...");
     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
     struct tm timeinfo;
     while (!getLocalTime(&timeinfo)) {
@@ -68,6 +65,7 @@ void setup() {
     Serial.println("\n[P-OBC] boot");
 
     tftInit();
+    displayBoot();
     connectWiFi();
     setupOTA();
     syncTime();
