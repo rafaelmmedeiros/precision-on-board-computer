@@ -36,6 +36,9 @@ float telemetryTempExt();
 float    telemetryTripKm();
 float    telemetryTripL();
 uint32_t telemetryTripSec();
+uint32_t telemetryTripStartUnix();   // epoch sec when trip began (0 if no NTP yet)
+float    telemetryTripMinKmL();      // 0 if no samples
+float    telemetryTripMaxKmL();      // 0 if no samples
 
 // --- 5-min km/L history --------------------------------------------------
 // Slot 0 is the live (instant) value; slots 1..count are locked 5-min

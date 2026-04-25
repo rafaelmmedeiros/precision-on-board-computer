@@ -1,4 +1,5 @@
 #include "AutonomyScreen.h"
+#include "Layout.h"
 #include "Telemetry.h"
 #include "Tft.h"
 #include "BitmapFont.h"
@@ -7,16 +8,9 @@
 #include <Arduino.h>
 #include <stdio.h>
 
-// --- Layout (mirrors ConsumptionScreen for visual consistency) -------------
+using namespace pobc;
 
-static constexpr int LEFT_W      = 340;
-static constexpr int DIV_X       = LEFT_W;
-static constexpr int DIV_W       = 4;
-static constexpr int RIGHT_X     = DIV_X + DIV_W;          // 344
-
-static constexpr int TOP_LABEL_Y = 8;
-static constexpr int FOOTER_DIV  = 252;
-static constexpr int FOOTER_Y    = 260;
+// Layout rails come from Layout.h. Screen-specific geometry below.
 
 static constexpr int BAR_X = 380;
 static constexpr int BAR_Y = 64;
@@ -72,8 +66,8 @@ void displayAutonomy() {
     drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, subBuf);
 
     // --- DIVIDERS ---------------------------------------------------------
-    fillRectU(DIV_X, 16,         DIV_W, FOOTER_DIV - 16, COL_AMBER);
-    fillRectU(0,     FOOTER_DIV, USR_W, 2,               COL_AMBER);
+    fillRectU(DIV_X, DIV_Y_TOP, DIV_W, FOOTER_DIV - DIV_Y_TOP, COL_AMBER);
+    fillRectU(0,     FOOTER_DIV, USR_W, 2,                     COL_AMBER);
 
     // --- RIGHT: tank gauge ------------------------------------------------
     drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "TANQUE");

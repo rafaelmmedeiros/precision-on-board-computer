@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <math.h>
+#include <time.h>
 
 using namespace pobc;
 
@@ -75,6 +76,9 @@ static double   g_tripSimSec = 0.0;
 static double   g_tripKm     = 0.0;
 static double   g_tripL      = 0.0;
 static uint32_t g_lastRealMs = 0;
+static uint32_t g_tripStartUnix = 0;     // epoch sec, 0 until NTP synced
+static float    g_tripMinKmL = 0.0f;     // 0 until first sample
+static float    g_tripMaxKmL = 0.0f;
 
 // === History =============================================================
 
@@ -103,12 +107,15 @@ static float effectiveScale() {
 
 void telemetryInit() {
     const uint32_t now = millis();
-    g_lastRealMs   = now;
-    g_regimeEndMs  = now;   // forces immediate regime pick
-    g_tripSimSec   = 0.0;
-    g_tripKm       = 0.0;
-    g_tripL        = 0.0;
-    g_periodSimMs  = 0;
+    g_lastRealMs    = now;
+    g_regimeEndMs   = now;   // forces immediate regime pick
+    g_tripSimSec    = 0.0;
+    g_tripKm        = 0.0;
+    g_tripL         = 0.0;
+    g_periodSimMs   = 0;
+    g_tripStartUnix = (uint32_t)time(nullptr);   // 0 if NTP not yet synced
+    g_tripMinKmL    = 0.0f;
+    g_tripMaxKmL    = 0.0f;
 }
 
 void telemetryTick() {
@@ -137,7 +144,18 @@ void telemetryTick() {
     g_tripSimSec += dtSec;
     g_tripKm     += dKm;
     float dL = 0.0f;
-    if (!g_dfco && g_kmL > 0.1f) dL = dKm / g_kmL;
+    if (!g_dfco && g_kmL > 0.1f) {
+        dL = dKm / g_kmL;
+        // Track min/max km/L across the trip (only "real driving" samples
+        // — DFCO inflates instant km/L because no fuel is being burnt;
+        // including those would make the maxKmL field meaningless for
+        // the trip log).
+        if (g_tripMaxKmL == 0.0f || g_kmL > g_tripMaxKmL) g_tripMaxKmL = g_kmL;
+        if (g_tripMinKmL == 0.0f || g_kmL < g_tripMinKmL) g_tripMinKmL = g_kmL;
+        // Stamp trip start once NTP delivers a real epoch — handles the
+        // common case where boot precedes WiFi+NTP sync by a few seconds.
+        if (g_tripStartUnix == 0) g_tripStartUnix = (uint32_t)time(nullptr);
+    }
     g_tripL += dL;
 
     if constexpr (USE_REAL_FUEL_LEVEL) {
@@ -193,9 +211,12 @@ float telemetryVoltage()       { return g_voltage; }
 float telemetryTempInt()       { return g_tempInt; }
 float telemetryTempExt()       { return g_tempExt; }
 
-float    telemetryTripKm()  { return (float)g_tripKm; }
-float    telemetryTripL()   { return (float)g_tripL; }
-uint32_t telemetryTripSec() { return (uint32_t)g_tripSimSec; }
+float    telemetryTripKm()        { return (float)g_tripKm; }
+float    telemetryTripL()         { return (float)g_tripL; }
+uint32_t telemetryTripSec()       { return (uint32_t)g_tripSimSec; }
+uint32_t telemetryTripStartUnix() { return g_tripStartUnix; }
+float    telemetryTripMinKmL()    { return g_tripMinKmL; }
+float    telemetryTripMaxKmL()    { return g_tripMaxKmL; }
 
 int   telemetryHistCount()   { return g_populated; }
 float telemetryHistAt(int i) {
@@ -225,7 +246,10 @@ void telemetryGetKmLStats(float& mean, float& stddev) {
 }
 
 void telemetryResetTrip() {
-    g_tripSimSec = 0.0;
-    g_tripKm     = 0.0;
-    g_tripL      = 0.0;
+    g_tripSimSec    = 0.0;
+    g_tripKm        = 0.0;
+    g_tripL         = 0.0;
+    g_tripStartUnix = (uint32_t)time(nullptr);
+    g_tripMinKmL    = 0.0f;
+    g_tripMaxKmL    = 0.0f;
 }

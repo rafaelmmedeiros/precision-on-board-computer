@@ -30,7 +30,6 @@ Implicações práticas:
 - **RTC:** DS3231 com CR2032
 - **Temperatura:** DS18B20 × 2 (interna e externa)
 - **GPS:** NEO-8M com antena externa
-- **SD Card:** Módulo SPI
 - **Alimentação:** Regulador DC-DC buck automotivo (ex: LM2596 ou MP1584) com saída dupla:
   - 5V para ESP32 (via VIN) e periféricos 5V
   - 3.3V dedicado para display final e módulos 3.3V (não usar o regulador interno do ESP32 para display)
@@ -58,17 +57,15 @@ Atribuição tentativa cobrindo Fase 1-4. Não é final, mas é o caminho de tra
 | Buzzer | 27 | PWM (LEDC) |
 | DS18B20 ×2 (interna + externa) | 4 | OneWire, ambos sensores no mesmo bus, endereçados por ROM ID 64-bit. Anotar qual ROM ID é interno/externo no firmware |
 | Dimmer backlight | 2 | PWM (LED onboard, OK para PWM) |
-| SD CS | 15 | VSPI |
 | Display CS | 5 | VSPI |
-| SPI MOSI | 23 | VSPI compartilhado SD + display |
-| SPI MISO | 19 | VSPI compartilhado |
-| SPI SCK | 18 | VSPI compartilhado |
+| SPI MOSI | 23 | VSPI display |
+| SPI MISO | 19 | VSPI display |
+| SPI SCK | 18 | VSPI display |
 
 **Notas de design:**
 
 - **Voltímetro como sinal de ignição:** mesmo pino lê tensão do sistema E detecta chave ligada via threshold. Bônus: detecta cranking (queda durante partida) e alternador morto (<13V com motor ligado). Mesma abordagem que OBCs OEM usam.
 - **DS18B20 num bus só:** dois sensores compartilham GPIO 4. Identificar ROM ID de cada um uma vez no firmware e fixar.
-- **SPI compartilhado SD + display:** funciona com chip selects disciplinados. Se logging SD brigar com framerate, mover SD para HSPI (pinos 14/12/13).
 - **Expansão futura se faltar pino:** PCF8574 / MCP23017 (expansor I²C, +8/+16 pinos no barramento existente) ou ADS1115 (ADC 16-bit I²C, melhor que o ADC nativo do ESP32 — vale a pena para sensor de pressão MHPS-10 da Fase 4 só pela qualidade).
 
 ## Sinais do Carro
@@ -89,7 +86,7 @@ Interrupt handler pino 27 captura pulse width µs. Consumo instantâneo L/h e km
 Altitude, inclinação longitudinal/lateral, heading, velocidade independente, sincronização hora atômica substituindo NTP.
 
 **Fase 4 — Features adicionais:**
-Log CSV no SD card. Upload WiFi ao chegar em casa. Sensor etanol Continental. Sensor pressão combustível MHPS-10.
+Sensor etanol Continental. Sensor pressão combustível MHPS-10.
 
 ## UI Design
 

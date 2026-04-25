@@ -1,5 +1,7 @@
 #include "ConsumptionScreen.h"
+#include "Layout.h"
 #include "Telemetry.h"
+#include "TripLog.h"
 #include "Tft.h"
 #include "BitmapFont.h"
 #include "Fonts.h"
@@ -7,16 +9,11 @@
 #include <Arduino.h>
 #include <stdio.h>
 
+using namespace pobc;
+
 // --- Layout constants ------------------------------------------------------
-
-static constexpr int LEFT_W      = 340;
-static constexpr int DIV_X       = LEFT_W;
-static constexpr int DIV_W       = 4;
-static constexpr int RIGHT_X     = DIV_X + DIV_W;          // 344
-
-static constexpr int TOP_LABEL_Y = 8;
-static constexpr int FOOTER_DIV  = 252;
-static constexpr int FOOTER_Y    = 260;
+// Shared rails (TOP_LABEL_Y, FOOTER_DIV, FOOTER_Y, LEFT_W, DIV_X, DIV_W,
+// RIGHT_X, DIV_Y_TOP) come from Layout.h.
 
 static constexpr int CHART_X      = RIGHT_X + 60;          // leave Y-label room
 static constexpr int CHART_RIGHT  = USR_W - 18;
@@ -86,8 +83,8 @@ void displayConsumption() {
     }
 
     // --- DIVIDERS ---------------------------------------------------------
-    fillRectU(DIV_X,    16, DIV_W,                FOOTER_DIV - 16, COL_AMBER);
-    fillRectU(0,        FOOTER_DIV, USR_W,        2,               COL_AMBER);
+    fillRectU(DIV_X, DIV_Y_TOP, DIV_W, FOOTER_DIV - DIV_Y_TOP, COL_AMBER);
+    fillRectU(0,     FOOTER_DIV, USR_W, 2,                     COL_AMBER);
 
     // --- RIGHT SIDE: history bar chart ------------------------------------
     drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "5m | Km/l");
@@ -146,11 +143,16 @@ void displayConsumption() {
 }
 
 ResetSet consumptionResets() {
+    // "Encerrar" instead of "Reset" because the action does more than zero
+    // the counters — it snapshots the trip into the persistent log first,
+    // then resets. The user's "carro que manda" principle (memory) prefers
+    // automatic trip closure on long ignition-off; until that signal is
+    // wired, this is the manual override.
     return {
         1,
         {
-            { "Viagem",  &telemetryResetTrip },
-            { nullptr,   nullptr             },
+            { "Encerrar viagem", &tripLogFinishCurrentTrip },
+            { nullptr,            nullptr                  },
         }
     };
 }
