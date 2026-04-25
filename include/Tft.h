@@ -38,9 +38,13 @@ int fontCellShort(uint8_t fontSel, uint8_t zoom);
 void targetBackBuffer();
 void flipBuffers();
 
-// Semantic color pickers used by the screens.
-uint16_t tempColor(float t);       // <10°C blue, >30°C red, else amber
-uint16_t voltageColor(float v);    // undervolt/overvolt red, nominal amber, charging green
+// Semantic color pickers used by the screens. Centralised here so every
+// view that visualises the same physical quantity (consumption, temp,
+// voltage) uses identical thresholds — change the rule once, every
+// screen follows.
+uint16_t tempColor(float t);          // <10°C blue, >30°C red, else amber
+uint16_t voltageColor(float v);       // undervolt/overvolt red, nominal amber, charging green
+uint16_t consumptionColor(float kmL); // <10 red, >14 green, else amber
 
 // Anti-image-sticking: cycles a small per-frame drawing offset every N minutes
 // so no single LCD pixel stays on the same state for long. Call once per loop.

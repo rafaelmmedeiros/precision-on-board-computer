@@ -26,12 +26,6 @@ static constexpr float SCALE_MAX = 20.0f;   // top of Y axis (km/L)
 
 // --- Helpers ---------------------------------------------------------------
 
-static uint16_t consumptionColor(float kmL) {
-    if (kmL < 10.0f) return COL_HOT;
-    if (kmL > 14.0f) return COL_GOOD;
-    return COL_AMBER;
-}
-
 static int valueToY(float v) {
     if (v < 0)         v = 0;
     if (v > SCALE_MAX) v = SCALE_MAX;

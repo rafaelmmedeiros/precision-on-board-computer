@@ -315,7 +315,10 @@ Debounce: 50 ms na leitura digital. Sleep deltas no `telemetryTick()` são clamp
 - **Fontes:**
   - CGROM 8×16, 12×24, 16×32 com zoom 1-4x
   - Bitmap proprietário DSEG7 nos tamanhos 48 / 72 / 120 px (heroes numéricos)
-- **Lógica de cor para consumo:** verde >14 km/L · amber 10-14 · vermelho <10. Mesma lógica replicada em barras de histórico.
+- **Lógica de cor por grandeza física** (em `Tft.h`, single source of truth — todas as telas chamam o helper, ninguém redefine threshold):
+  - `consumptionColor(kmL)` — verde >14 · amber 10-14 · vermelho <10
+  - `tempColor(°C)` — azul <10 · amber 10-30 · vermelho >30
+  - `voltageColor(V)` — vermelho <12 ou >14.8 · amber 12-13.5 (sem alternador) · verde 13.5-14.8 (carregando)
 
 ### 6.2 Layout
 

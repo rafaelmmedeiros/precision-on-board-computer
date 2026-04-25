@@ -120,6 +120,14 @@ uint16_t voltageColor(float v) {
     return COL_HOT;                     // overvoltage
 }
 
+uint16_t consumptionColor(float kmL) {
+    // Same thresholds as the consumption history bars — keeps every
+    // view of the same physical quantity visually consistent.
+    if (kmL < 10.0f) return COL_HOT;
+    if (kmL > 14.0f) return COL_GOOD;
+    return COL_AMBER;
+}
+
 // --- Anti-image-sticking ---------------------------------------------------
 
 void tftTick() {
