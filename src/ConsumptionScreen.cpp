@@ -36,11 +36,20 @@ static constexpr uint32_t HIST_PERIOD_MS = 30UL * 1000UL;
 
 // --- State -----------------------------------------------------------------
 
-static float    g_history[HIST_N];      // [0]=live, [1..N-1]=locked 5-min averages
+static float    g_history[HIST_N] = {0};   // [0]=live, [1..populated]=locked
+static int      g_populated   = 0;          // count of locked bars filled in [1..N-1]
 static uint32_t g_periodStart = 0;
 static float    g_periodSum   = 0.0f;
 static int      g_periodN     = 0;
-static bool     g_inited      = false;
+
+// Trip integrator — constant 80 km/h sim, consumption varies. Liters and km
+// accumulate every frame so the avg km/L is a true running mean.
+static constexpr float SIM_SPEED_KMH = 80.0f;
+static uint32_t g_tripStartMs = 0;
+static uint32_t g_tripLastMs  = 0;
+static float    g_tripKm      = 0.0f;
+static float    g_tripL       = 0.0f;
+static bool     g_tripInited  = false;
 
 // --- Helpers ---------------------------------------------------------------
 
@@ -59,30 +68,12 @@ static float simInstant() {
     return base + ripple;
 }
 
-static void seedHistoryOnce() {
-    if (g_inited) return;
-    // Plausible 1-hour trip narrative: started in heavy city traffic (red),
-    // hit the highway (green peak), settled into suburban cruise (amber),
-    // ran into traffic again (red), then began recovering. Index [1] is the
-    // most recent locked slot, [N-1] the oldest. Index [0] is overwritten
-    // every frame with the live value.
-    static const float seed[HIST_N] = {
-        12.0f,    // [0]  live — overwritten each frame
-        11.0f,    // [1]   ~5 min ago — recovering from traffic
-         8.0f,    // [2]   ~10 min ago — heavy traffic
-         9.5f,    // [3]   ~15 min ago — slowing into city
-        12.0f,    // [4]   ~20 min ago — suburban
-        13.0f,    // [5]   ~25 min ago — suburban cruise
-        15.5f,    // [6]   ~30 min ago — highway exit
-        17.0f,    // [7]   ~35 min ago — sustained highway
-        16.0f,    // [8]   ~40 min ago — highway
-        13.0f,    // [9]   ~45 min ago — entering highway
-         9.0f,    // [10]  ~50 min ago — leaving the city
-         8.5f,    // [11]  ~55-60 min ago — heavy city, departure
-    };
-    for (int i = 0; i < HIST_N; ++i) g_history[i] = seed[i];
-    g_periodStart = millis();
-    g_inited      = true;
+static void seedTripOnce() {
+    if (g_tripInited) return;
+    g_tripStartMs = millis();
+    g_tripLastMs  = g_tripStartMs;
+    g_periodStart = g_tripStartMs;
+    g_tripInited  = true;
 }
 
 static void tickHistory(float instant) {
@@ -93,6 +84,7 @@ static void tickHistory(float instant) {
         const float avg = g_periodSum / (float)g_periodN;
         for (int i = HIST_N - 1; i >= 2; --i) g_history[i] = g_history[i - 1];
         g_history[1] = avg;
+        if (g_populated < HIST_N - 1) g_populated++;
         g_periodSum  = 0.0f;
         g_periodN    = 0;
         g_periodStart = millis();
@@ -119,23 +111,28 @@ static void drawGridLine(float v) {
 // --- Render ----------------------------------------------------------------
 
 void displayConsumption() {
-    seedHistoryOnce();
+    seedTripOnce();
 
     const float instant = simInstant();
     tickHistory(instant);
 
-    // Trip data — simulated for Phase 1 demo.
-    static uint32_t tripStart = millis();
-    const float tripHours = (millis() - tripStart) / 3600000.0f;
-    const float tripKm    = tripHours * 60.0f;     // 60 km/h sim avg
-    const float tripAvg   = 13.8f;                 // sim avg consumption
-    const float tripL     = tripKm / tripAvg;
-    const int   tripMin   = (int)(tripHours * 60.0f);
+    // Trip integrator — constant 80 km/h sim. Per-frame Δkm = v · Δt;
+    // Δlitros = Δkm / consumo_atual. Avg km/L emerges as tripKm / tripL.
+    const uint32_t now = millis();
+    const float dtSec  = (now - g_tripLastMs) / 1000.0f;
+    g_tripLastMs       = now;
+    const float dKm = SIM_SPEED_KMH * dtSec / 3600.0f;
+    g_tripKm += dKm;
+    if (instant > 0.1f) g_tripL += dKm / instant;
+    const float tripAvg = (g_tripL > 0.0001f) ? (g_tripKm / g_tripL) : instant;
+    const int   tripSec = (int)((now - g_tripStartMs) / 1000UL);
+    const int   tripH   = tripSec / 3600;
+    const int   tripM   = (tripSec / 60) % 60;
 
     fillScreenU(COL_BG);
 
     // --- LEFT SIDE: hero current consumption ------------------------------
-    drawCenteredInU(0, LEFT_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "INSTANTANEO");
+    drawCenteredInU(0, LEFT_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "INST");
 
     char heroBuf[8];
     snprintf(heroBuf, sizeof(heroBuf), "%.1f", instant);
@@ -151,8 +148,7 @@ void displayConsumption() {
     fillRectU(0,        FOOTER_DIV, USR_W,        2,               COL_AMBER);
 
     // --- RIGHT SIDE: history bar chart ------------------------------------
-    drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER,
-                    "HISTORICO  5 MIN/BARRA");
+    drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "5M | KM/L");
 
     // Gridlines + Y labels.
     drawGridLine(5.0f);
@@ -164,10 +160,13 @@ void displayConsumption() {
     fillRectU(CHART_X, CHART_BOTTOM, CHART_W, 2, COL_AMBER);
 
     // Bars. Slot pitch = total / N. Bar takes 70% of its slot, gap is the rest.
+    // Index 0 (live) is always drawn; index 1..g_populated grow in as 5-min
+    // slots close. The chart starts empty on every power-on (new trip).
     const int slot   = CHART_W / HIST_N;
     const int barW   = (slot * 7) / 10;
     const int barPad = (slot - barW) / 2;
-    for (int i = 0; i < HIST_N; ++i) {
+    const int lastBar = g_populated;   // bars [0..lastBar] are valid
+    for (int i = 0; i <= lastBar; ++i) {
         const float v  = g_history[i];
         const int   by = valueToY(v);
         const int   bh = CHART_BOTTOM - by;
@@ -194,17 +193,19 @@ void displayConsumption() {
     drawTextU(CHART_X + 8 * slot - 8,            CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-40");
     drawTextU(CHART_X + (HIST_N - 1) * slot - 8, CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-60");
 
-    // --- FOOTER: trip summary --------------------------------------------
+    // --- FOOTER: trip summary, declutter pass ----------------------------
+    // 4 cells, no redundant unit suffixes ("KM/L" implied by the screen,
+    // "TRIP" prefix dropped since the unit makes it obvious).
     char buf[24];
-    snprintf(buf, sizeof(buf), "MED %.1f KM/L", tripAvg);
+    snprintf(buf, sizeof(buf), "MED %.1f", tripAvg);
     drawTextU(20, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
-    snprintf(buf, sizeof(buf), "TRIP %d KM", (int)tripKm);
-    drawCenteredInU(280, 560, FOOTER_Y, 1, 2, COL_AMBER, buf);
+    snprintf(buf, sizeof(buf), "%d KM", (int)g_tripKm);
+    drawCenteredInU(260, 540, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
-    snprintf(buf, sizeof(buf), "%.1f L", tripL);
-    drawCenteredInU(560, 760, FOOTER_Y, 1, 2, COL_AMBER, buf);
+    snprintf(buf, sizeof(buf), "%.1f L", g_tripL);
+    drawCenteredInU(540, 760, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
-    snprintf(buf, sizeof(buf), "%dH %02dMIN", tripMin / 60, tripMin % 60);
-    drawTextU(USR_W - 220, FOOTER_Y, 1, 2, COL_AMBER, buf);
+    snprintf(buf, sizeof(buf), "%d:%02d", tripH, tripM);
+    drawTextU(USR_W - 140, FOOTER_Y, 1, 2, COL_AMBER, buf);
 }

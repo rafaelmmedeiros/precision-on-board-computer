@@ -14,7 +14,7 @@
 #define DAYLIGHT_OFFSET_SEC 0
 
 static constexpr uint32_t SYSTEM_DWELL_MS      = 5UL * 1000UL;
-static constexpr uint32_t CONSUMPTION_DWELL_MS = 5UL * 1000UL;
+static constexpr uint32_t CONSUMPTION_DWELL_MS = 60UL * 1000UL;
 
 // --- Boot messages ---------------------------------------------------------
 
