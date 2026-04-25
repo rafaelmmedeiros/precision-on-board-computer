@@ -141,14 +141,14 @@ void displayConsumption() {
     const int heroX = (LEFT_W - heroW) / 2;
     drawBitmapText(heroX, 64, DSEG7_120, heroBuf, heroCol);
 
-    drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, "KM/L");
+    drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, "Km/l");
 
     // --- DIVIDERS ---------------------------------------------------------
     fillRectU(DIV_X,    16, DIV_W,                FOOTER_DIV - 16, COL_AMBER);
     fillRectU(0,        FOOTER_DIV, USR_W,        2,               COL_AMBER);
 
     // --- RIGHT SIDE: history bar chart ------------------------------------
-    drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "5M | KM/L");
+    drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "5m | Km/l");
 
     // Gridlines + Y labels.
     drawGridLine(5.0f);
