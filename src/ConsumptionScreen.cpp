@@ -51,6 +51,17 @@ static float    g_tripKm      = 0.0f;
 static float    g_tripL       = 0.0f;
 static bool     g_tripInited  = false;
 
+// Regime state machine — replaces the sin wave with longer "phases" of
+// driving so the screen looks like a real road instead of an oscillator.
+//   Cruise   ~70% — flat in the amber band, small jitter
+//   Uphill   ~17% — drops into red (heavy load)
+//   Downhill ~13% — DFCO: injectors closed, no fuel, hero shows "CORTE"
+enum class Regime : uint8_t { Cruise, Uphill, Downhill };
+static Regime    g_regime       = Regime::Cruise;
+static uint32_t  g_regimeEnd    = 0;
+static float     g_regimeTarget = 12.0f;
+static float     g_smoothed     = 12.0f;
+
 // --- Helpers ---------------------------------------------------------------
 
 static uint16_t consumptionColor(float kmL) {
@@ -59,14 +70,35 @@ static uint16_t consumptionColor(float kmL) {
     return COL_AMBER;
 }
 
-static float simInstant() {
-    // Slow base wave (city/highway alternation) + a faster ripple to make
-    // the live bar visibly move.
-    float t = millis() / 1000.0f;
-    float base   = 12.0f + 4.0f * sinf(t * 2.0f * (float)M_PI / 18.0f);
-    float ripple = 1.2f * sinf(t * 1.7f);
-    return base + ripple;
+static void pickNextRegime() {
+    const uint32_t now = millis();
+    const long r = random(100);
+    if (r < 70) {
+        g_regime       = Regime::Cruise;
+        g_regimeTarget = 11.5f + random(30) / 10.0f;     // 11.5 .. 14.5
+        g_regimeEnd    = now + 30000UL + random(40000);   // 30 .. 70 s
+    } else if (r < 87) {
+        g_regime       = Regime::Uphill;
+        g_regimeTarget = 6.0f + random(25) / 10.0f;      // 6.0 .. 8.5
+        g_regimeEnd    = now + 12000UL + random(15000);   // 12 .. 27 s
+    } else {
+        g_regime       = Regime::Downhill;
+        g_regimeTarget = SCALE_MAX;                       // pegged at 20 km/L
+        g_regimeEnd    = now + 8000UL + random(15000);    // 8 .. 23 s
+    }
 }
+
+static float simInstant() {
+    if (millis() >= g_regimeEnd) pickNextRegime();
+    g_smoothed += (g_regimeTarget - g_smoothed) * 0.06f;
+    if (g_regime == Regime::Cruise) {
+        // Tiny breathing while flat so the live bar doesn't look frozen.
+        g_smoothed += 0.08f * sinf(millis() / 700.0f);
+    }
+    return g_smoothed;
+}
+
+static bool isFuelCut() { return g_regime == Regime::Downhill; }
 
 static void seedTripOnce() {
     if (g_tripInited) return;
@@ -114,16 +146,19 @@ void displayConsumption() {
     seedTripOnce();
 
     const float instant = simInstant();
+    const bool  cut     = isFuelCut();
     tickHistory(instant);
 
     // Trip integrator — constant 80 km/h sim. Per-frame Δkm = v · Δt;
-    // Δlitros = Δkm / consumo_atual. Avg km/L emerges as tripKm / tripL.
+    // Δlitros = Δkm / consumo_atual, but during DFCO no fuel is injected,
+    // so liters do NOT accumulate while km still does. That is exactly how
+    // the running average rises during long downhills in real cars.
     const uint32_t now = millis();
     const float dtSec  = (now - g_tripLastMs) / 1000.0f;
     g_tripLastMs       = now;
     const float dKm = SIM_SPEED_KMH * dtSec / 3600.0f;
     g_tripKm += dKm;
-    if (instant > 0.1f) g_tripL += dKm / instant;
+    if (!cut && instant > 0.1f) g_tripL += dKm / instant;
     const float tripAvg = (g_tripL > 0.0001f) ? (g_tripKm / g_tripL) : instant;
     const int   tripSec = (int)((now - g_tripStartMs) / 1000UL);
     const int   tripH   = tripSec / 3600;
@@ -134,14 +169,22 @@ void displayConsumption() {
     // --- LEFT SIDE: hero current consumption ------------------------------
     drawCenteredInU(0, LEFT_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "INST");
 
-    char heroBuf[8];
-    snprintf(heroBuf, sizeof(heroBuf), "%.1f", instant);
-    const uint16_t heroCol = consumptionColor(instant);
-    const int heroW = measureBitmapText(DSEG7_120, heroBuf);
-    const int heroX = (LEFT_W - heroW) / 2;
-    drawBitmapText(heroX, 64, DSEG7_120, heroBuf, heroCol);
+    if (cut) {
+        // DFCO — Deceleration Fuel Cut-Off. No injector pulses, no fuel,
+        // best km/L the engine can do. Show "CORTE" in green at the hero
+        // slot; subtitle echoes the state.
+        drawCenteredInU(0, LEFT_W, 76, 2, 3, COL_GOOD, "CORTE");
+        drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_GOOD, "DFCO");
+    } else {
+        char heroBuf[8];
+        snprintf(heroBuf, sizeof(heroBuf), "%.1f", instant);
+        const uint16_t heroCol = consumptionColor(instant);
+        const int heroW = measureBitmapText(DSEG7_120, heroBuf);
+        const int heroX = (LEFT_W - heroW) / 2;
+        drawBitmapText(heroX, 64, DSEG7_120, heroBuf, heroCol);
 
-    drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, "Km/l");
+        drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, "Km/l");
+    }
 
     // --- DIVIDERS ---------------------------------------------------------
     fillRectU(DIV_X,    16, DIV_W,                FOOTER_DIV - 16, COL_AMBER);
