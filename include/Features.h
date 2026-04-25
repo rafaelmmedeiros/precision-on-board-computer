@@ -108,9 +108,9 @@ constexpr uint32_t BENCH_GRACE_MS_OVERRIDE = 30UL * 1000UL;         // 30 s on b
 // Bench levels — kept conservative so the operator's eyes don't burn
 // during desk work. Production may want DAY = 255 (full brightness) once
 // the unit is in the car under sunlight.
-constexpr uint8_t BACKLIGHT_LEVEL_DAY   = 102;   // 40 %
-constexpr uint8_t BACKLIGHT_LEVEL_NIGHT =  38;   // 15 % — softer for night
-constexpr uint8_t BACKLIGHT_LEVEL_OFF   =   0;
+constexpr uint8_t BACKLIGHT_LEVEL_NIGHT     = 38;   // 15 % — softer for night
+constexpr uint8_t BACKLIGHT_LEVEL_DAY       = 102;   // 40 %
+constexpr uint8_t BACKLIGHT_LEVEL_OFF       = 0;
 
 // Set to true if the breakout drives the BL_CONTROL signal inverted (high
 // duty dims, low duty brightens). The current breakout reads "active-high
