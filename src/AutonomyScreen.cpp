@@ -1,5 +1,5 @@
 #include "AutonomyScreen.h"
-#include "ConsumptionScreen.h"
+#include "Telemetry.h"
 #include "Tft.h"
 #include "BitmapFont.h"
 #include "Fonts.h"
@@ -18,42 +18,10 @@ static constexpr int TOP_LABEL_Y = 8;
 static constexpr int FOOTER_DIV  = 252;
 static constexpr int FOOTER_Y    = 260;
 
-// Tank gauge bar (right half).
 static constexpr int BAR_X = 380;
 static constexpr int BAR_Y = 64;
 static constexpr int BAR_W = 500;
 static constexpr int BAR_H = 80;
-
-// --- Vehicle constants -----------------------------------------------------
-
-// Astra 2011 2.0 8V Flex.
-static constexpr float TANK_CAP_L = 52.0f;
-
-// --- Bench simulation state ------------------------------------------------
-// Real implementation will read the boia on GPIO 33. For now we drain and
-// refuel on a tight loop so the gauge animates fast enough to inspect.
-
-static constexpr float SIM_INITIAL_L  = 40.0f;   // start mid-range, not full
-static constexpr float SIM_DRAIN_LPS  = 0.30f;   // ~3 min from 40L → 0L
-static constexpr float SIM_REFUEL_AT  = 1.0f;    // L threshold for refuel
-
-static float    g_tankL      = SIM_INITIAL_L;
-static uint32_t g_simLastMs  = 0;
-static bool     g_simInited  = false;
-
-static void simTick() {
-    const uint32_t now = millis();
-    if (!g_simInited) {
-        g_simLastMs  = now;
-        g_simInited  = true;
-        return;
-    }
-    const float dt = (now - g_simLastMs) / 1000.0f;
-    g_simLastMs    = now;
-
-    g_tankL -= SIM_DRAIN_LPS * dt;
-    if (g_tankL < SIM_REFUEL_AT) g_tankL = TANK_CAP_L;
-}
 
 // --- Color logic -----------------------------------------------------------
 
@@ -72,20 +40,20 @@ static uint16_t tankColor(float pct) {
 // --- Render ----------------------------------------------------------------
 
 void displayAutonomy() {
-    simTick();
-
     float mean   = 0.0f;
     float stddev = 0.0f;
-    consumptionGetStats(mean, stddev);
+    telemetryGetKmLStats(mean, stddev);
 
-    const float rangeMid = g_tankL * mean;
-    const float rangeStd = g_tankL * stddev;
+    const float tankL    = telemetryTankL();
+    const float tankCap  = telemetryTankCapacityL();
+    const float tankPct  = (tankCap > 0.0001f) ? (tankL / tankCap) : 0.0f;
+
+    const float rangeMid = tankL * mean;
+    const float rangeStd = tankL * stddev;
     const int   rangeKm  = (int)(rangeMid + 0.5f);
     const int   plusKm   = (int)(rangeStd + 0.5f);
-    const int   minKm    = (int)((mean - 2.0f * stddev) * g_tankL + 0.5f);
-    const int   maxKm    = (int)((mean + 2.0f * stddev) * g_tankL + 0.5f);
-
-    const float tankPct  = g_tankL / TANK_CAP_L;
+    const int   minKm    = (int)((mean - 2.0f * stddev) * tankL + 0.5f);
+    const int   maxKm    = (int)((mean + 2.0f * stddev) * tankL + 0.5f);
 
     fillScreenU(COL_BG);
 
@@ -99,7 +67,6 @@ void displayAutonomy() {
     const int heroX = (LEFT_W - heroW) / 2;
     drawBitmapText(heroX, 64, DSEG7_120, heroBuf, heroCol);
 
-    // "± 35 km" subtitle in the same slot ConsumptionScreen uses for "Km/l".
     char subBuf[20];
     snprintf(subBuf, sizeof(subBuf), "+/- %d km", plusKm);
     drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, subBuf);
@@ -111,13 +78,12 @@ void displayAutonomy() {
     // --- RIGHT: tank gauge ------------------------------------------------
     drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "TANQUE");
 
-    // Bar frame (4 px border, hollow center).
     fillRectU(BAR_X,             BAR_Y,             BAR_W, 4,     COL_AMBER);
     fillRectU(BAR_X,             BAR_Y + BAR_H - 4, BAR_W, 4,     COL_AMBER);
     fillRectU(BAR_X,             BAR_Y,             4,     BAR_H, COL_AMBER);
     fillRectU(BAR_X + BAR_W - 4, BAR_Y,             4,     BAR_H, COL_AMBER);
 
-    // Reserve tick at 15% so the driver sees the threshold.
+    // Reserve tick at 15% — visual threshold without doing math.
     {
         const int rx = BAR_X + 4 + (int)((BAR_W - 8) * 0.15f);
         fillRectU(rx, BAR_Y - 4, 2, BAR_H + 8, COL_AMBER);
@@ -133,9 +99,8 @@ void displayAutonomy() {
         if (fillW > 0) fillRectU(innerX, innerY, fillW, innerH, tankColor(tankPct));
     }
 
-    // Labels below the bar: liters left, percentage right.
     char tankBuf[16];
-    snprintf(tankBuf, sizeof(tankBuf), "%.1f L", g_tankL);
+    snprintf(tankBuf, sizeof(tankBuf), "%.1f L", tankL);
     drawCenteredInU(BAR_X, BAR_X + BAR_W / 2, 170, 1, 3, COL_AMBER, tankBuf);
 
     char pctBuf[8];

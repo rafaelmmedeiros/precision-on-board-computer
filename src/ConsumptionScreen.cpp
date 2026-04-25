@@ -1,14 +1,14 @@
 #include "ConsumptionScreen.h"
+#include "Telemetry.h"
 #include "Tft.h"
 #include "BitmapFont.h"
 #include "Fonts.h"
 
 #include <Arduino.h>
-#include <math.h>
 #include <stdio.h>
 
 // --- Layout constants ------------------------------------------------------
-// Vertical bands: top label / hero+chart / x-axis / footer.
+
 static constexpr int LEFT_W      = 340;
 static constexpr int DIV_X       = LEFT_W;
 static constexpr int DIV_W       = 4;
@@ -18,49 +18,14 @@ static constexpr int TOP_LABEL_Y = 8;
 static constexpr int FOOTER_DIV  = 252;
 static constexpr int FOOTER_Y    = 260;
 
-// Chart bounding box (right side).
-static constexpr int CHART_X      = RIGHT_X + 60;          // leave room for Y labels
+static constexpr int CHART_X      = RIGHT_X + 60;          // leave Y-label room
 static constexpr int CHART_RIGHT  = USR_W - 18;
 static constexpr int CHART_TOP    = 64;
 static constexpr int CHART_BOTTOM = 220;
 static constexpr int CHART_W      = CHART_RIGHT - CHART_X;
 static constexpr int CHART_H      = CHART_BOTTOM - CHART_TOP;
 
-// Consumption scale (km/L).
-static constexpr float SCALE_MAX = 20.0f;
-
-// 12 bars × 5 min/slot = 1-hour rolling window — same cadence Phase 2
-// will use with real injector data.
-static constexpr int      HIST_N         = 12;
-static constexpr uint32_t HIST_PERIOD_MS = 5UL * 60UL * 1000UL;
-
-// --- State -----------------------------------------------------------------
-
-static float    g_history[HIST_N] = {0};   // [0]=live, [1..populated]=locked
-static int      g_populated   = 0;          // count of locked bars filled in [1..N-1]
-static uint32_t g_periodStart = 0;
-static float    g_periodSum   = 0.0f;
-static int      g_periodN     = 0;
-
-// Trip integrator — constant 80 km/h sim, consumption varies. Liters and km
-// accumulate every frame so the avg km/L is a true running mean.
-static constexpr float SIM_SPEED_KMH = 80.0f;
-static uint32_t g_tripStartMs = 0;
-static uint32_t g_tripLastMs  = 0;
-static float    g_tripKm      = 0.0f;
-static float    g_tripL       = 0.0f;
-static bool     g_tripInited  = false;
-
-// Regime state machine — replaces the sin wave with longer "phases" of
-// driving so the screen looks like a real road instead of an oscillator.
-//   Cruise   ~70% — flat in the amber band, small jitter
-//   Uphill   ~17% — drops into red (heavy load)
-//   Downhill ~13% — DFCO: injectors closed, no fuel, hero shows "CORTE"
-enum class Regime : uint8_t { Cruise, Uphill, Downhill };
-static Regime    g_regime       = Regime::Cruise;
-static uint32_t  g_regimeEnd    = 0;
-static float     g_regimeTarget = 12.0f;
-static float     g_smoothed     = 12.0f;
+static constexpr float SCALE_MAX = 20.0f;   // top of Y axis (km/L)
 
 // --- Helpers ---------------------------------------------------------------
 
@@ -70,66 +35,12 @@ static uint16_t consumptionColor(float kmL) {
     return COL_AMBER;
 }
 
-static void pickNextRegime() {
-    const uint32_t now = millis();
-    const long r = random(100);
-    if (r < 70) {
-        g_regime       = Regime::Cruise;
-        g_regimeTarget = 11.5f + random(30) / 10.0f;     // 11.5 .. 14.5
-        g_regimeEnd    = now + 30000UL + random(40000);   // 30 .. 70 s
-    } else if (r < 87) {
-        g_regime       = Regime::Uphill;
-        g_regimeTarget = 6.0f + random(25) / 10.0f;      // 6.0 .. 8.5
-        g_regimeEnd    = now + 12000UL + random(15000);   // 12 .. 27 s
-    } else {
-        g_regime       = Regime::Downhill;
-        g_regimeTarget = SCALE_MAX;                       // pegged at 20 km/L
-        g_regimeEnd    = now + 8000UL + random(15000);    // 8 .. 23 s
-    }
-}
-
-static float simInstant() {
-    if (millis() >= g_regimeEnd) pickNextRegime();
-    g_smoothed += (g_regimeTarget - g_smoothed) * 0.06f;
-    if (g_regime == Regime::Cruise) {
-        // Tiny breathing while flat so the live bar doesn't look frozen.
-        g_smoothed += 0.08f * sinf(millis() / 700.0f);
-    }
-    return g_smoothed;
-}
-
-static bool isFuelCut() { return g_regime == Regime::Downhill; }
-
-static void seedTripOnce() {
-    if (g_tripInited) return;
-    g_tripStartMs = millis();
-    g_tripLastMs  = g_tripStartMs;
-    g_periodStart = g_tripStartMs;
-    g_tripInited  = true;
-}
-
-static void tickHistory(float instant) {
-    g_history[0] = instant;
-    g_periodSum += instant;
-    g_periodN   += 1;
-    if (millis() - g_periodStart >= HIST_PERIOD_MS && g_periodN > 0) {
-        const float avg = g_periodSum / (float)g_periodN;
-        for (int i = HIST_N - 1; i >= 2; --i) g_history[i] = g_history[i - 1];
-        g_history[1] = avg;
-        if (g_populated < HIST_N - 1) g_populated++;
-        g_periodSum  = 0.0f;
-        g_periodN    = 0;
-        g_periodStart = millis();
-    }
-}
-
 static int valueToY(float v) {
     if (v < 0)         v = 0;
     if (v > SCALE_MAX) v = SCALE_MAX;
     return CHART_BOTTOM - (int)(v / SCALE_MAX * (float)CHART_H);
 }
 
-// Dotted horizontal gridline at consumption level v.
 static void drawGridLine(float v) {
     const int y = valueToY(v);
     for (int x = CHART_X; x < CHART_RIGHT; x += 10) {
@@ -143,26 +54,14 @@ static void drawGridLine(float v) {
 // --- Render ----------------------------------------------------------------
 
 void displayConsumption() {
-    seedTripOnce();
-
-    const float instant = simInstant();
-    const bool  cut     = isFuelCut();
-    tickHistory(instant);
-
-    // Trip integrator — constant 80 km/h sim. Per-frame Δkm = v · Δt;
-    // Δlitros = Δkm / consumo_atual, but during DFCO no fuel is injected,
-    // so liters do NOT accumulate while km still does. That is exactly how
-    // the running average rises during long downhills in real cars.
-    const uint32_t now = millis();
-    const float dtSec  = (now - g_tripLastMs) / 1000.0f;
-    g_tripLastMs       = now;
-    const float dKm = SIM_SPEED_KMH * dtSec / 3600.0f;
-    g_tripKm += dKm;
-    if (!cut && instant > 0.1f) g_tripL += dKm / instant;
-    const float tripAvg = (g_tripL > 0.0001f) ? (g_tripKm / g_tripL) : instant;
-    const int   tripSec = (int)((now - g_tripStartMs) / 1000UL);
-    const int   tripH   = tripSec / 3600;
-    const int   tripM   = (tripSec / 60) % 60;
+    const float instant = telemetryKmL();
+    const bool  cut     = telemetryFuelCut();
+    const float tripKm  = telemetryTripKm();
+    const float tripL   = telemetryTripL();
+    const uint32_t tripSec = telemetryTripSec();
+    const float tripAvg = (tripL > 0.0001f) ? (tripKm / tripL) : instant;
+    const int   tripH   = (int)(tripSec / 3600U);
+    const int   tripM   = (int)((tripSec / 60U) % 60U);
 
     fillScreenU(COL_BG);
 
@@ -193,24 +92,21 @@ void displayConsumption() {
     // --- RIGHT SIDE: history bar chart ------------------------------------
     drawCenteredInU(RIGHT_X, USR_W, TOP_LABEL_Y, 1, 2, COL_AMBER, "5m | Km/l");
 
-    // Gridlines + Y labels.
     drawGridLine(5.0f);
     drawGridLine(10.0f);
     drawGridLine(15.0f);
     drawGridLine(20.0f);
 
-    // X-axis baseline.
     fillRectU(CHART_X, CHART_BOTTOM, CHART_W, 2, COL_AMBER);
 
-    // Bars. Slot pitch = total / N. Bar takes 70% of its slot, gap is the rest.
-    // Index 0 (live) is always drawn; index 1..g_populated grow in as 5-min
-    // slots close. The chart starts empty on every power-on (new trip).
-    const int slot   = CHART_W / HIST_N;
-    const int barW   = (slot * 7) / 10;
-    const int barPad = (slot - barW) / 2;
-    const int lastBar = g_populated;   // bars [0..lastBar] are valid
+    // Bars: index 0 (live) is always drawn; index 1..histCount grow in as
+    // 5-min slots close. The chart starts empty on every power-on.
+    const int slot    = CHART_W / TELEMETRY_HIST_N;
+    const int barW    = (slot * 7) / 10;
+    const int barPad  = (slot - barW) / 2;
+    const int lastBar = telemetryHistCount();
     for (int i = 0; i <= lastBar; ++i) {
-        const float v  = g_history[i];
+        const float v  = telemetryHistAt(i);
         const int   by = valueToY(v);
         const int   bh = CHART_BOTTOM - by;
         const int   bx = CHART_X + i * slot + barPad;
@@ -218,87 +114,43 @@ void displayConsumption() {
         if (bh > 0) fillRectU(bx, by, barW, bh, bc);
     }
 
-    // Live indicator: a small triangle/notch above bar 0 so the eye instantly
-    // knows that one is the moving target.
+    // Live indicator: small downward triangle above bar 0 so the eye
+    // instantly knows that one is the moving target.
     {
         const int bx = CHART_X + 0 * slot + barPad;
         const int markX = bx + barW / 2;
         const int markY = CHART_TOP - 8;
-        // 7-px wide downward triangle approximated with 4 stacked rects.
         for (int k = 0; k < 4; ++k) {
             fillRectU(markX - 3 + k, markY + k, 7 - 2 * k, 1, COL_AMBER);
         }
     }
 
-    // X-axis labels: AGORA at bar 0; -20/-40/-60 at later positions.
-    drawTextU(CHART_X + 0 * slot,                CHART_BOTTOM + 8, 0, 1, COL_AMBER, "AGORA");
-    drawTextU(CHART_X + 4 * slot - 8,            CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-20");
-    drawTextU(CHART_X + 8 * slot - 8,            CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-40");
-    drawTextU(CHART_X + (HIST_N - 1) * slot - 8, CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-60");
+    drawTextU(CHART_X + 0 * slot,                          CHART_BOTTOM + 8, 0, 1, COL_AMBER, "AGORA");
+    drawTextU(CHART_X + 4 * slot - 8,                      CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-20");
+    drawTextU(CHART_X + 8 * slot - 8,                      CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-40");
+    drawTextU(CHART_X + (TELEMETRY_HIST_N - 1) * slot - 8, CHART_BOTTOM + 8, 0, 1, COL_AMBER, "-60");
 
-    // --- FOOTER: trip summary, declutter pass ----------------------------
-    // 4 cells, no redundant unit suffixes ("KM/L" implied by the screen,
-    // "TRIP" prefix dropped since the unit makes it obvious).
+    // --- FOOTER: trip summary --------------------------------------------
     char buf[24];
     snprintf(buf, sizeof(buf), "MED %.1f", tripAvg);
     drawTextU(20, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
-    snprintf(buf, sizeof(buf), "%d KM", (int)g_tripKm);
+    snprintf(buf, sizeof(buf), "%d KM", (int)tripKm);
     drawCenteredInU(260, 540, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
-    snprintf(buf, sizeof(buf), "%.1f L", g_tripL);
+    snprintf(buf, sizeof(buf), "%.1f L", tripL);
     drawCenteredInU(540, 760, FOOTER_Y, 1, 2, COL_AMBER, buf);
 
     snprintf(buf, sizeof(buf), "%d:%02d", tripH, tripM);
     drawTextU(USR_W - 140, FOOTER_Y, 1, 2, COL_AMBER, buf);
 }
 
-// --- Reset hooks -----------------------------------------------------------
-
-void consumptionResetTrip() {
-    const uint32_t now = millis();
-    g_tripStartMs = now;
-    g_tripLastMs  = now;
-    g_tripKm      = 0.0f;
-    g_tripL       = 0.0f;
-    g_tripInited  = true;
-}
-
 ResetSet consumptionResets() {
     return {
         1,
         {
-            { "Viagem",  &consumptionResetTrip },
-            { nullptr,   nullptr               },
+            { "Viagem",  &telemetryResetTrip },
+            { nullptr,   nullptr             },
         }
     };
-}
-
-void consumptionGetStats(float& mean, float& stddev) {
-    // Sample = live (slot 0) + every locked 5-min slot we have so far.
-    // With 0 locked slots we still have a meaningful "mean" (the live
-    // value) but no real spread, so we apply a conservative floor so the
-    // autonomy screen never claims false precision early in a trip.
-    const int n = g_populated + 1;
-
-    float sum = 0.0f;
-    for (int i = 0; i < n; ++i) sum += g_history[i];
-    mean = (n > 0) ? (sum / n) : 12.0f;
-
-    if (n < 2) {
-        stddev = mean * 0.15f;   // 15% — typical flex consumption variability
-        return;
-    }
-
-    float vsum = 0.0f;
-    for (int i = 0; i < n; ++i) {
-        const float d = g_history[i] - mean;
-        vsum += d * d;
-    }
-    stddev = sqrtf(vsum / n);
-
-    // Floor: a tank's worth of "exact" range is dishonest. 5% is a
-    // reasonable lower bound on real-world variability.
-    const float floor = mean * 0.05f;
-    if (stddev < floor) stddev = floor;
 }

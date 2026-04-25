@@ -1,10 +1,10 @@
 #include "SystemScreen.h"
+#include "Telemetry.h"
 #include "Tft.h"
 #include "BitmapFont.h"
 #include "Fonts.h"
 
 #include <Arduino.h>
-#include <math.h>
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
@@ -25,23 +25,6 @@ static constexpr int RIGHT_END   = USR_W;               // 960
 // Pixel center of each half — used for sanity when aligning by hand.
 static constexpr int LEFT_MID  = (LEFT_START + LEFT_END)  / 2;   // 239
 static constexpr int RIGHT_MID = (RIGHT_START + RIGHT_END) / 2;  // 721
-
-// --- Simulated values (bench demo — sensors not yet wired) -----------------
-
-static float simVoltage() {
-    float t = millis() / 1000.0f;
-    return 13.25f + 2.25f * sinf(t * 2.0f * (float)M_PI / 30.0f);
-}
-
-static float simTempInt() {
-    float t = millis() / 1000.0f;
-    return 22.5f + 17.5f * sinf(t * 2.0f * (float)M_PI / 24.0f + 1.2f);
-}
-
-static float simTempExt() {
-    float t = millis() / 1000.0f;
-    return 20.0f + 25.0f * sinf(t * 2.0f * (float)M_PI / 36.0f + 2.4f);
-}
 
 // --- Screen render ---------------------------------------------------------
 
@@ -65,9 +48,9 @@ void displaySystem() {
         colonOn = (timeinfo.tm_sec % 2) == 0;
     }
 
-    float volt = simVoltage();
-    float tInt = simTempInt();
-    float tExt = simTempExt();
+    float volt = telemetryVoltage();
+    float tInt = telemetryTempInt();
+    float tExt = telemetryTempExt();
     uint16_t vCol = voltageColor(volt);
     uint16_t iCol = tempColor(tInt);
     uint16_t eCol = tempColor(tExt);

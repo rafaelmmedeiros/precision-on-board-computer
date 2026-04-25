@@ -7,6 +7,7 @@
 #include "BootScreen.h"
 #include "Buttons.h"
 #include "ResetScreen.h"
+#include "Telemetry.h"
 #include "SystemScreen.h"
 #include "ConsumptionScreen.h"
 #include "AutonomyScreen.h"
@@ -122,6 +123,7 @@ void setup() {
     Serial.println("\n[P-OBC] boot");
 
     buttonsInit();
+    telemetryInit();
     tftInit();
     displayBoot();
     connectWiFi();
@@ -138,6 +140,11 @@ static constexpr uint32_t FRAME_PERIOD_MS = 100;
 
 void loop() {
     const uint32_t frameStartMs = millis();
+
+    // Tick the vehicle state model first thing every frame, so every
+    // screen renders against the same coherent snapshot regardless of
+    // which one happens to be visible. Skipping ticks freezes time.
+    telemetryTick();
 
     // Contextual hold thresholds:
     //   - Outside the modal, S is "go home" — a fast, non-destructive nav

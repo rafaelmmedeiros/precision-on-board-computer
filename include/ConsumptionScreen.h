@@ -7,15 +7,7 @@
 // locked 5-min averages that shift right as time passes), trip summary
 // footer across the bottom.
 //
-// Phase 1 (bench): all values are simulated. Phase 2 swaps simInstant()
-// for a value derived from the injector pulse-width interrupt.
+// Pure view over Telemetry — no simulation, no integration here.
 void displayConsumption();
 
-// Resets exposed to the contextual reset menu.
-void     consumptionResetTrip();
 ResetSet consumptionResets();
-
-// Recent km/L mean and standard deviation, derived from the live + locked
-// history slots. AutonomyScreen uses these to compute range and confidence
-// without re-running its own consumption simulation.
-void consumptionGetStats(float& mean, float& stddev);
