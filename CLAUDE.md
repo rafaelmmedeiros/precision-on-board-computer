@@ -407,6 +407,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits) e chega ao backlight do LT7680. Os 
 ### 7.2 Decisões em aberto
 
 - **Desligar o display em GRACE / DEEP_SLEEP** — resolvido. `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. GPIO 2 já chega ao backlight da placa atual (não precisou refazer trilha). Polaridade invertida da placa é tratada por `BACKLIGHT_ACTIVE_LOW=true` em `Features.h` — se trocar de breakout, basta flipar a flag.
+- **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Como o ESP32 é always-on, não é "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 
 ---
 
