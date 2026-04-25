@@ -45,9 +45,9 @@ static bool     g_inited      = false;
 // --- Helpers ---------------------------------------------------------------
 
 static uint16_t consumptionColor(float kmL) {
-    if (kmL < 8.0f)  return COL_HOT;
-    if (kmL < 14.0f) return COL_AMBER;
-    return COL_GOOD;
+    if (kmL < 10.0f) return COL_HOT;
+    if (kmL > 14.0f) return COL_GOOD;
+    return COL_AMBER;
 }
 
 static float simInstant() {
@@ -61,10 +61,26 @@ static float simInstant() {
 
 static void seedHistoryOnce() {
     if (g_inited) return;
-    // Pre-fill with a plausible decay so the chart isn't empty on first frame.
-    for (int i = 0; i < HIST_N; ++i) {
-        g_history[i] = 11.5f + 1.5f * sinf((float)i * 0.7f);
-    }
+    // Plausible 1-hour trip narrative: started in heavy city traffic (red),
+    // hit the highway (green peak), settled into suburban cruise (amber),
+    // ran into traffic again (red), then began recovering. Index [1] is the
+    // most recent locked slot, [N-1] the oldest. Index [0] is overwritten
+    // every frame with the live value.
+    static const float seed[HIST_N] = {
+        12.0f,    // [0]  live — overwritten each frame
+        11.0f,    // [1]   ~5 min ago — recovering from traffic
+         8.0f,    // [2]   ~10 min ago — heavy traffic
+         9.5f,    // [3]   ~15 min ago — slowing into city
+        12.0f,    // [4]   ~20 min ago — suburban
+        13.0f,    // [5]   ~25 min ago — suburban cruise
+        15.5f,    // [6]   ~30 min ago — highway exit
+        17.0f,    // [7]   ~35 min ago — sustained highway
+        16.0f,    // [8]   ~40 min ago — highway
+        13.0f,    // [9]   ~45 min ago — entering highway
+         9.0f,    // [10]  ~50 min ago — leaving the city
+         8.5f,    // [11]  ~55-60 min ago — heavy city, departure
+    };
+    for (int i = 0; i < HIST_N; ++i) g_history[i] = seed[i];
     g_periodStart = millis();
     g_inited      = true;
 }
