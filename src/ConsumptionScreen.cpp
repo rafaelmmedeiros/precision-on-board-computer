@@ -29,10 +29,10 @@ static constexpr int CHART_H      = CHART_BOTTOM - CHART_TOP;
 // Consumption scale (km/L).
 static constexpr float SCALE_MAX = 20.0f;
 
-// History size and slot duration. Demo: 30 s/slot so the shift is visible
-// at the bench. Real Phase 2 firmware: 5 * 60 * 1000.
+// 12 bars × 5 min/slot = 1-hour rolling window — same cadence Phase 2
+// will use with real injector data.
 static constexpr int      HIST_N         = 12;
-static constexpr uint32_t HIST_PERIOD_MS = 30UL * 1000UL;
+static constexpr uint32_t HIST_PERIOD_MS = 5UL * 60UL * 1000UL;
 
 // --- State -----------------------------------------------------------------
 
