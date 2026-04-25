@@ -4,6 +4,7 @@
 #include "Fonts.h"
 
 #include <Arduino.h>
+#include <math.h>
 #include <stdio.h>
 
 // --- Layout constants ------------------------------------------------------
@@ -271,4 +272,33 @@ ResetSet consumptionResets() {
             { nullptr,   nullptr               },
         }
     };
+}
+
+void consumptionGetStats(float& mean, float& stddev) {
+    // Sample = live (slot 0) + every locked 5-min slot we have so far.
+    // With 0 locked slots we still have a meaningful "mean" (the live
+    // value) but no real spread, so we apply a conservative floor so the
+    // autonomy screen never claims false precision early in a trip.
+    const int n = g_populated + 1;
+
+    float sum = 0.0f;
+    for (int i = 0; i < n; ++i) sum += g_history[i];
+    mean = (n > 0) ? (sum / n) : 12.0f;
+
+    if (n < 2) {
+        stddev = mean * 0.15f;   // 15% — typical flex consumption variability
+        return;
+    }
+
+    float vsum = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        const float d = g_history[i] - mean;
+        vsum += d * d;
+    }
+    stddev = sqrtf(vsum / n);
+
+    // Floor: a tank's worth of "exact" range is dishonest. 5% is a
+    // reasonable lower bound on real-world variability.
+    const float floor = mean * 0.05f;
+    if (stddev < floor) stddev = floor;
 }
