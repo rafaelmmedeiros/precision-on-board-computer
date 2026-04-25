@@ -18,8 +18,12 @@ constexpr bool USE_REAL_INJECTOR     = false; // GPIO 34 — pulse-width interru
 constexpr bool USE_REAL_VSS          = false; // GPIO 36 — vehicle speed signal
 constexpr bool USE_REAL_VOLTAGE      = false; // GPIO 32 — battery + ignition ADC
 constexpr bool USE_REAL_FUEL_LEVEL   = false; // GPIO 33 — boia ADC
-constexpr bool USE_REAL_TEMP_SENSORS = false; // GPIO 4  — DS18B20 OneWire
-constexpr bool USE_REAL_GPS          = false; // UART2
+constexpr bool USE_REAL_TEMP_SENSORS = false; // DS18B20 OneWire — pino a alocar
+                                              //   (GPIO 4 está em uso pelo painel
+                                              //   ST7701S no boot; reuso pós-init
+                                              //   é viável, ver CLAUDE.md §4.2)
+constexpr bool USE_REAL_GPS          = false; // GPS NEO-8M — pinos UART a alocar
+                                              //   (16/17 saíram do mapa, ver §4.2)
 constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 — ignition digital input
                                               //   Bench and production share the
                                               //   same active-low topology (switch

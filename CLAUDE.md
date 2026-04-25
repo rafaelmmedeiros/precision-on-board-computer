@@ -120,34 +120,60 @@ pio run -t clean                         # Limpa build
 
 ### 4.2 Mapa de pinos ESP32
 
-20 pinos atribuídos. GPIOs 14 (HSPI_CLK, reservado pra display em algumas placas) e 39 (input-only, sem pull interno) sobram livres no SoC. Sem necessidade de expansor I²C ou shift register no escopo atual.
+A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-up SW-SPI do painel ST7701S e o BL_CONTROL. Mais 5 pinos pra ignição/farol/botões. Total: **14 pinos físicos conectados hoje**.
+
+#### Conectados (hardware na bancada)
 
 | Função | GPIO | Notas |
 |--------|------|-------|
-| I²C SDA (display, RTC) | 21 | Padrão Wire |
-| I²C SCL (display, RTC) | 22 | Padrão Wire |
-| Voltímetro | 32 | ADC1, divisor 14.4V→3.3V. Mede só voltagem da bateria/alternador (>13V = carregando, <12V = só bateria). Não detecta mais ignição. |
-| Sinal de ignição | 13 | Digital, active-low. `INPUT_PULLUP` interno + chave/opto pra GND, mesma topologia dos botões R/S. RTC-capable → usado como `ext0` wake source pra deep sleep. NÃO é strapping pin. Bench: chave do protoboard. Produção: PC817 com coletor→GPIO 13, emissor→GND, LED do opto recebe 12V chaveado. |
-| Injeção (bicos) | 34 | Input-only, interrupt, divisor 5V→3.3V |
-| VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
+| Display SCK (VSPI, runtime) | 18 | LT7680 hardware SPI clock |
+| Display MOSI (VSPI, runtime) | 23 | LT7680 hardware SPI data in |
+| Display MISO (VSPI, runtime) | 19 | LT7680 hardware SPI data out |
+| Display CS (LT7680) | 5 | VSPI chip-select runtime |
+| Display RESET (LT7680) | 16 | Pulso só no `tftInit()`, depois idle |
+| Painel ST7701S — SW-SPI CLK | 14 | Bring-up do painel só no `tftInit()`, depois idle |
+| Painel ST7701S — SW-SPI CS | 17 | Bring-up do painel só no `tftInit()`, depois idle |
+| Painel ST7701S — SW-SPI DI | 4 | Bring-up do painel só no `tftInit()`, depois idle |
+| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. API `tftBacklight(0..255)`. Polaridade active-low na placa atual (`BACKLIGHT_ACTIVE_LOW=true`). |
+| Sinal de ignição | 13 | Digital active-low. `INPUT_PULLUP` interno + chave/opto pra GND. RTC-capable → `ext0` wake source. Bench: chave protoboard. Produção: PC817. |
+| Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo 10k pra 3.3V. Active-low. Lido por `telemetryHeadlightOn()`. |
+| Botão R | 25 | Pull-up interno, chave pra GND |
+| Botão S | 26 | Pull-up interno, chave pra GND |
+
+#### Reservados (pinos comprometidos, hardware ainda não montado)
+
+| Função | GPIO | Notas |
+|--------|------|-------|
+| I²C SDA (DS3231) | 21 | Padrão Wire — DS3231 ainda não soldado |
+| I²C SCL (DS3231) | 22 | Padrão Wire |
+| Voltímetro | 32 | ADC1, divisor 14.4V→3.3V. Mede bateria/alternador. |
 | Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi) |
-| GPS RX | 16 | UART2 |
-| GPS TX | 17 | UART2 |
-| Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo de pull-up 10k pra 3.3V (necessário tanto pra PC817 produção quanto pra chave-pra-GND da bancada). Active-low igual à ignição. Lido por `telemetryHeadlightOn()`. |
-| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. Driver software pronto (`tftBacklight()`). Empiricamente, GPIO 2 já chega no backlight do LT7680 nessa placa. Polaridade **active-low** (duty maior dimm, duty menor brilha) — `BACKLIGHT_ACTIVE_LOW=true`. API pública (`tftBacklight(0..255)`, 0 dark / 255 bright) é intuitiva e a flag faz a inversão internamente. Se trocar de breakout pra um active-high, basta flipar a flag pra `false`. |
-| Botão R | 25 | Pull-up interno |
-| Botão S | 26 | Pull-up interno |
-| Buzzer | 27 | PWM (LEDC) |
-| DS18B20 ×2 | 4 | OneWire — sensores endereçados por ROM ID 64-bit, anotar interno/externo |
-| Display CS | 5 | VSPI |
-| SPI MOSI | 23 | VSPI display |
-| SPI MISO | 19 | VSPI display |
-| SPI SCK | 18 | VSPI display |
+| Injeção (bicos) ECU | 34 | Input-only, interrupt, divisor 5V→3.3V |
+| VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
+
+#### Sem pino atribuído (a alocar quando hardware chegar)
+
+| Função | Status | Caminhos |
+|---|---|---|
+| Buzzer | Sem alocação | GPIO 27 era a intenção original — ainda livre se nada brigar até lá. |
+| DS18B20 ×2 (interno + externo, OneWire) | Sem alocação | Opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
+| GPS NEO-8M (UART2) | Sem alocação | A pinagem default UART2 (16/17) **não está mais disponível** — GPIO 16 virou RESET do LT7680 e 17 é CS do painel ST7701S. Caminhos: (a) usar `Serial1` em pinos arbitrários, ex. RX em 39 (input-only, ADC1) e TX em 15 (strapping, mas seguro depois do boot); (b) reaproveitar 14/17 pós-init com `Serial2.begin(baud, cfg, 14, 17)`. |
+
+#### Truly livres no ESP32
+
+| GPIO | Notas |
+|---|---|
+| 27 | Reservado pra buzzer (intenção original mantida) |
+| 39 (VN) | Input-only, ADC1, sem pull. Bom pra GPS RX ou ADC adicional. |
+| 15 | Strapping (HIGH default no boot, LOW silencia boot messages). Usável após boot. |
+| 12 | Strapping perigoso (define voltagem do flash interno) — **evitar** salvo último recurso. |
+| 0 | Strapping (boot mode) — **evitar**. |
 
 **Notas de design:**
 
-- **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. GPIO 14 fica reservado pelo HSPI_CLK do controlador de display em alguns breakouts, por isso a ignição foi pra GPIO 13. Antes da arquitetura always-on, a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
-- **DS18B20 num bus só:** dois sensores compartilham GPIO 4. Identificar ROM ID de cada uma vez no firmware.
+- **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. NÃO é strapping pin. Antes da arquitetura always-on a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
+- **Pinos do painel ST7701S são reutilizáveis:** GPIO 4, 14, 17 só são pulsados uma vez em `ST7701S_Initial()` (chamado dentro de `tftInit()`). Após isso ficam idle e podem ser reconfigurados via `pinMode()` pra outra função (OneWire, UART, etc.). Documentar bem quem reaproveita o quê pra evitar conflito de ordem de init.
+- **Display RESET (16) também só é pulsado no boot,** mas é mais arriscado reaproveitar — se algum reset transiente for emitido depois (raro), bagunça o periférico que estiver lá.
 - **Expansão futura:** PCF8574/MCP23017 (expansor I²C) ou ADS1115 (ADC 16-bit, vale a pena pro MHPS-10 da Fase 4).
 
 ### 4.3 Sinais do carro
@@ -248,7 +274,7 @@ constexpr bool USE_REAL_INJECTOR     = false; // GPIO 34
 constexpr bool USE_REAL_VSS          = false; // GPIO 36
 constexpr bool USE_REAL_VOLTAGE      = false; // GPIO 32
 constexpr bool USE_REAL_FUEL_LEVEL   = false; // GPIO 33 (boia)
-constexpr bool USE_REAL_TEMP_SENSORS = false; // GPIO 4 (DS18B20)
+constexpr bool USE_REAL_TEMP_SENSORS = false; // DS18B20 (pino a alocar — ver §4.2)
 constexpr bool USE_REAL_GPS          = false; // UART2
 constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 (digital active-low)
 constexpr bool USE_REAL_FAROL        = true;  // GPIO 35 (digital active-low, sem sim)
