@@ -88,7 +88,8 @@ void displayHistory() {
         return;
     }
 
-    const int best = bestIndex();
+    const int best     = bestIndex();
+    const int bestSlot = (best >= 0) ? (count - 1 - best) : -1;   // newest-on-left mapping
 
     // --- Chart ------------------------------------------------------------
     drawGridLine(5.0f);
@@ -99,15 +100,18 @@ void displayHistory() {
     // Baseline.
     fillRectU(CHART_X, CHART_BOTTOM, CHART_W, 2, COL_AMBER);
 
-    // Bars: slot pitch fixed at TRIP_LOG_MAX so newest is always rightmost
-    // and the chart "fills up" left-to-right as trips accumulate.
+    // Bars: slot pitch fixed at TRIP_LOG_MAX. Newest sits on the LEFT to
+    // match ConsumptionScreen's convention (AGORA on the left, older slots
+    // extend rightward). Slot 0 = most recent trip, slot count-1 = oldest
+    // still in the log; slots count..N_MAX-1 stay empty.
     const int slot   = CHART_W / TRIP_LOG_MAX;
     const int barW   = (slot * 7) / 10;
     const int barPad = (slot - barW) / 2;
 
     for (int i = 0; i < count; ++i) {
-        const TripRecord& r = tripLogAt(i);
-        const int slotIdx = TRIP_LOG_MAX - count + i;
+        // tripLogAt is oldest-first; flip so log[count-1] (newest) → slot 0.
+        const TripRecord& r = tripLogAt(count - 1 - i);
+        const int slotIdx = i;
         const int by = valueToY(r.avgKmL);
         const int bh = CHART_BOTTOM - by;
         const int bx = CHART_X + slotIdx * slot + barPad;
@@ -115,7 +119,7 @@ void displayHistory() {
         if (bh > 0) fillRectU(bx, by, barW, bh, bc);
 
         // Highlight outline on the best-of-window bar.
-        if (i == best && bh > 0) {
+        if (i == bestSlot && bh > 0) {
             fillRectU(bx - 2, by - 2, barW + 4, 2, COL_AMBER);
             fillRectU(bx - 2, CHART_BOTTOM,    barW + 4, 2, COL_AMBER);
             fillRectU(bx - 2, by - 2, 2, bh + 4, COL_AMBER);
