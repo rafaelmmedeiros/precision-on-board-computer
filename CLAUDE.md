@@ -174,7 +174,7 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 - **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. NÃO é strapping pin. Antes da arquitetura always-on a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
 - **Pinos do painel ST7701S são reutilizáveis:** GPIO 4, 14, 17 só são pulsados uma vez em `ST7701S_Initial()` (chamado dentro de `tftInit()`). Após isso ficam idle e podem ser reconfigurados via `pinMode()` pra outra função (OneWire, UART, etc.). Documentar bem quem reaproveita o quê pra evitar conflito de ordem de init.
 - **Display RESET (16) também só é pulsado no boot,** mas é mais arriscado reaproveitar — se algum reset transiente for emitido depois (raro), bagunça o periférico que estiver lá.
-- **Expansão futura:** PCF8574/MCP23017 (expansor I²C) ou ADS1115 (ADC 16-bit, vale a pena pro MHPS-10 da Fase 4).
+- **Expansão futura via I²C:** o bus 21/22 escala — qualquer periférico I²C novo entra sem custo de pino, só conferindo conflito de endereço. Útil quando aparecer um sensor I²C novo, expansor de GPIO ou ADC externo.
 
 ### 4.3 Sinais do carro
 
@@ -403,8 +403,6 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits) e chega ao backlight do LT7680. Os 
 **Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS. Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState (§5.8) — quando o opto for montado, basta `USE_REAL_IGNITION=true`.
 
 **Fase 3 — GPS:** altitude, inclinação, heading, velocidade independente, NTP→GPS pra hora atômica.
-
-**Fase 4 — Extras:** sensor de etanol (Continental), sensor de pressão de combustível (MHPS-10).
 
 ### 7.2 Decisões em aberto
 
