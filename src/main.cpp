@@ -6,15 +6,15 @@
 #include "Tft.h"
 #include "BootScreen.h"
 #include "SystemScreen.h"
-#include "DutyScreen.h"
+#include "ConsumptionScreen.h"
 #include "config.h"
 
 #define NTP_SERVER          "pool.ntp.org"
 #define GMT_OFFSET_SEC      (-3 * 3600)   // Brasília UTC-3
 #define DAYLIGHT_OFFSET_SEC 0
 
-static constexpr uint32_t SYSTEM_DWELL_MS = 3UL * 60UL * 1000UL;  // 3 min
-static constexpr uint32_t DUTY_DWELL_MS   = 5UL * 1000UL;
+static constexpr uint32_t SYSTEM_DWELL_MS      = 60UL * 1000UL;   // 1 min
+static constexpr uint32_t CONSUMPTION_DWELL_MS = 60UL * 1000UL;   // 1 min
 
 // --- Boot messages ---------------------------------------------------------
 
@@ -74,12 +74,12 @@ void setup() {
 void loop() {
     static uint8_t  screen = 0;
     static uint32_t lastSwitch = 0;
-    static const uint32_t dwell[] = { SYSTEM_DWELL_MS, DUTY_DWELL_MS };
+    static const uint32_t dwell[] = { SYSTEM_DWELL_MS, CONSUMPTION_DWELL_MS };
 
     targetBackBuffer();
     switch (screen) {
-        case 0: displaySystem(); break;
-        case 1: displayDuty();   break;
+        case 0: displaySystem();      break;
+        case 1: displayConsumption(); break;
     }
     flipBuffers();
 
