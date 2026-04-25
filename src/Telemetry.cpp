@@ -252,4 +252,9 @@ void telemetryResetTrip() {
     g_tripStartUnix = (uint32_t)time(nullptr);
     g_tripMinKmL    = 0.0f;
     g_tripMaxKmL    = 0.0f;
+    for (int i = 0; i < TELEMETRY_HIST_N; ++i) g_history[i] = 0.0f;
+    g_populated   = 0;
+    g_periodSimMs = 0;
+    g_periodSum   = 0.0;
+    g_periodN     = 0;
 }
