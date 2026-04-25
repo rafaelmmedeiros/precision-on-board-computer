@@ -29,6 +29,18 @@ constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 — ignition digital in
                                               //   coherence with the other sensors
                                               //   and as a hook for future opto
                                               //   polarity changes.
+constexpr bool USE_REAL_FAROL        = true;  // GPIO 35 — headlight digital input
+                                              //   Same topology as ignition: switch
+                                              //   or PC817 pulls pin to GND. GPIO
+                                              //   35 is input-only with NO internal
+                                              //   pull, so an EXTERNAL 10k pull-up
+                                              //   to 3.3V is mandatory (already
+                                              //   needed by the production opto
+                                              //   collector — single resistor
+                                              //   covers both wiring scenarios).
+                                              //   Flag is `true` because there is
+                                              //   no simulated farol — the bench
+                                              //   uses a real toggle switch.
 
 // True when at least one signal is still simulated. Used by Telemetry to
 // decide whether the bench fast-forward applies.
@@ -80,5 +92,32 @@ constexpr uint32_t GRACE_PERIOD_MS = 60UL * 60UL * 1000UL;          // 1 h
 // sleep cycle in seconds instead of waiting an hour. Not applied when
 // USE_REAL_IGNITION is true (production must use the real timeout).
 constexpr uint32_t BENCH_GRACE_MS_OVERRIDE = 30UL * 1000UL;         // 30 s on bench
+
+// === Backlight =============================================================
+//
+// Driven by PWM on GPIO 2 (LEDC). On the bench this also blinks the
+// onboard LED, which is convenient debug feedback. The pin is meant to
+// feed the LT7680 BL_CONTROL input (datasheet pin 9) once the 3.3V
+// hard-tie is cut — until then, the PWM signal is generated and visible
+// only on the onboard LED.
+//
+// Levels are 0..255 (LEDC 8-bit). DAY is full brightness, NIGHT mirrors
+// the factory dashboard "headlights on" dim, OFF kills the backlight
+// entirely (used in GRACE / DEEP_SLEEP).
+
+// Bench levels — kept conservative so the operator's eyes don't burn
+// during desk work. Production may want DAY = 255 (full brightness) once
+// the unit is in the car under sunlight.
+constexpr uint8_t BACKLIGHT_LEVEL_DAY   = 153;   // 60 %
+constexpr uint8_t BACKLIGHT_LEVEL_NIGHT =  76;   // 30 % — softer for night
+constexpr uint8_t BACKLIGHT_LEVEL_OFF   =   0;
+
+// Set to true if the breakout drives the BL_CONTROL signal inverted (high
+// duty dims, low duty brightens). The current breakout reads "active-high
+// + dimmable via duty" — duty up, BL up — so the flag is false. Public
+// API in Tft.h (`tftBacklight(0..255)`, 0 dark / 255 bright) is unchanged
+// regardless: tftBacklight() flips internally before writing the LEDC
+// when this flag is true.
+constexpr bool    BACKLIGHT_ACTIVE_LOW  = true;
 
 } // namespace pobc

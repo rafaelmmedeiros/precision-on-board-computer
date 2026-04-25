@@ -12,6 +12,7 @@
 #include "Telemetry.h"
 #include "TripLog.h"
 #include "PowerState.h"
+#include "Features.h"
 #include "SystemScreen.h"
 #include "ConsumptionScreen.h"
 #include "AutonomyScreen.h"
@@ -146,6 +147,7 @@ void setup() {
     powerInit();   // reads GPIO 14, recovers stash, picks initial state
 
     tftInit();
+    tftBacklightInit();
 
     // Skip the splash + WiFi/NTP cost when we just woke from deep sleep:
     // the driver wants the UI immediately. DS3231 keeps the clock alive
@@ -183,6 +185,27 @@ static void blankScreen() {
     flipBuffers();
 }
 
+// Backlight policy:
+//   - Display only lights up while the OBC is interactive (ACTIVE or
+//     POST_TRIP_SUMMARY). Both GRACE and DEEP_SLEEP_PENDING force OFF.
+//   - When the display IS lit, the level depends on the headlight
+//     signal — lights on dims the panel like the factory dashboard.
+static void applyBacklightPolicy() {
+    uint8_t level = BACKLIGHT_LEVEL_OFF;
+    switch (powerCurrent()) {
+        case PowerState::ACTIVE:
+        case PowerState::POST_TRIP_SUMMARY:
+            level = telemetryHeadlightOn() ? BACKLIGHT_LEVEL_NIGHT
+                                           : BACKLIGHT_LEVEL_DAY;
+            break;
+        case PowerState::GRACE:
+        case PowerState::DEEP_SLEEP_PENDING:
+            level = BACKLIGHT_LEVEL_OFF;
+            break;
+    }
+    tftBacklight(level);
+}
+
 static void enterLightSleep() {
     // Wake on ignition return (GPIO 14 going LOW) or after the remaining
     // grace window has fully elapsed in real time.
@@ -211,6 +234,7 @@ void loop() {
     //    so a transition into POST_TRIP_SUMMARY / GRACE / DEEP_SLEEP is
     //    visible to the rest of the frame.
     powerTick();
+    applyBacklightPolicy();
 
     // Branch by power state. ACTIVE keeps the original behavior; the
     // other states have tailored loop bodies.

@@ -49,3 +49,15 @@ uint16_t consumptionColor(float kmL); // <10 red, >14 green, else amber
 // Anti-image-sticking: cycles a small per-frame drawing offset every N minutes
 // so no single LCD pixel stays on the same state for long. Call once per loop.
 void tftTick();
+
+// --- Backlight (BL_CONTROL via PWM on GPIO 2) -----------------------------
+//
+// Configures LEDC and starts at full brightness. Call once during setup
+// AFTER tftInit(). On the bench the same pin drives the onboard LED, so
+// PWM activity is visible even before the LT7680 BL_CONTROL pin is
+// rerouted off its current 3.3V hard-tie.
+void tftBacklightInit();
+
+// Set backlight brightness 0..255. 0 = fully off, 255 = full brightness.
+// Used by main.cpp to apply the day / night / off policy each frame.
+void tftBacklight(uint8_t level);

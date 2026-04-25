@@ -38,6 +38,12 @@ float telemetryVoltage();
 float telemetryTempInt();
 float telemetryTempExt();
 
+// True when the headlights are on. Sampled directly off GPIO 35 each
+// call (no smoothing — backlight transitions of a few ms are
+// imperceptible). External 10k pull-up is mandatory because GPIO 35 is
+// input-only with no internal pulls.
+bool  telemetryHeadlightOn();
+
 // --- Trip accumulators (resettable) --------------------------------------
 
 float    telemetryTripKm();

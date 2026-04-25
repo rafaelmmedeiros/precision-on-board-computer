@@ -105,7 +105,16 @@ static float effectiveScale() {
 
 // === Lifecycle ============================================================
 
+// GPIO 35 is input-only and exposes NO internal pull-up/pull-down. The
+// pinMode call here is mostly a formality — the production circuit (PC817
+// collector) and the bench setup (toggle switch to GND) BOTH require an
+// external 10k pull-up to 3.3V. Without it, the pin floats and reads
+// garbage.
+static constexpr int FAROL_PIN = 35;
+
 void telemetryInit() {
+    pinMode(FAROL_PIN, INPUT);   // external pull-up does the rest
+
     const uint32_t now = millis();
     g_lastRealMs    = now;
     g_regimeEndMs   = now;   // forces immediate regime pick
@@ -116,6 +125,14 @@ void telemetryInit() {
     g_tripStartUnix = (uint32_t)time(nullptr);   // 0 if NTP not yet synced
     g_tripMinKmL    = 0.0f;
     g_tripMaxKmL    = 0.0f;
+}
+
+bool telemetryHeadlightOn() {
+    if constexpr (USE_REAL_FAROL) {
+        return digitalRead(FAROL_PIN) == LOW;   // active-low (switch/opto to GND)
+    } else {
+        return false;
+    }
 }
 
 void telemetryPause() {

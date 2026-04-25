@@ -133,12 +133,12 @@ pio run -t clean                         # Limpa build
 | Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi) |
 | GPS RX | 16 | UART2 |
 | GPS TX | 17 | UART2 |
-| Farol aceso | 35 | Input-only. PC817 opto-acoplador (não divisor) — isolamento galvânico |
+| Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo de pull-up 10k pra 3.3V (necessário tanto pra PC817 produção quanto pra chave-pra-GND da bancada). Active-low igual à ignição. Lido por `telemetryHeadlightOn()`. |
+| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. Driver software pronto (`tftBacklight()`). Empiricamente, GPIO 2 já chega no backlight do LT7680 nessa placa. Polaridade **active-low** (duty maior dimm, duty menor brilha) — `BACKLIGHT_ACTIVE_LOW=true`. API pública (`tftBacklight(0..255)`, 0 dark / 255 bright) é intuitiva e a flag faz a inversão internamente. Se trocar de breakout pra um active-high, basta flipar a flag pra `false`. |
 | Botão R | 25 | Pull-up interno |
 | Botão S | 26 | Pull-up interno |
 | Buzzer | 27 | PWM (LEDC) |
 | DS18B20 ×2 | 4 | OneWire — sensores endereçados por ROM ID 64-bit, anotar interno/externo |
-| Dimmer backlight | 2 | PWM (LED onboard, ok pra PWM) |
 | Display CS | 5 | VSPI |
 | SPI MOSI | 23 | VSPI display |
 | SPI MISO | 19 | VSPI display |
@@ -251,7 +251,13 @@ constexpr bool USE_REAL_FUEL_LEVEL   = false; // GPIO 33 (boia)
 constexpr bool USE_REAL_TEMP_SENSORS = false; // GPIO 4 (DS18B20)
 constexpr bool USE_REAL_GPS          = false; // UART2
 constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 (digital active-low)
+constexpr bool USE_REAL_FAROL        = true;  // GPIO 35 (digital active-low, sem sim)
 constexpr float BENCH_TIME_SCALE     = 60.0f; // 1 real sec = 1 sim min
+
+constexpr uint8_t  BACKLIGHT_LEVEL_DAY   = 153;  // 60 % na bancada
+constexpr uint8_t  BACKLIGHT_LEVEL_NIGHT =  76;  // 30 % na bancada
+constexpr uint8_t  BACKLIGHT_LEVEL_OFF   =   0;
+constexpr bool     BACKLIGHT_ACTIVE_LOW  = true;
 
 constexpr uint32_t POST_TRIP_SUMMARY_MS                = 60UL * 1000UL;        // 60 s
 constexpr uint32_t GRACE_PERIOD_MS                     = 60UL * 60UL * 1000UL; // 1 h
@@ -345,6 +351,19 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 `tftTick()` desloca a origem do canvas em ciclo de 4 cantos a cada 5 minutos. Pixel shift de 2 px previne image-sticking sem afetar legibilidade.
 
+### 6.6 Backlight automático
+
+`main.cpp::applyBacklightPolicy()` é chamado a cada frame, depois do `powerTick()`. Decide o nível PWM (0..255) com base no estado de power + farol:
+
+| PowerState | Farol off | Farol on |
+|---|---|---|
+| `ACTIVE` | `BACKLIGHT_LEVEL_DAY` (153 ≈ 60 %) | `BACKLIGHT_LEVEL_NIGHT` (76 ≈ 30 %) |
+| `POST_TRIP_SUMMARY` | `BACKLIGHT_LEVEL_DAY` | `BACKLIGHT_LEVEL_NIGHT` |
+| `GRACE` | `BACKLIGHT_LEVEL_OFF` (0) | `BACKLIGHT_LEVEL_OFF` |
+| `DEEP_SLEEP_PENDING` | `BACKLIGHT_LEVEL_OFF` | `BACKLIGHT_LEVEL_OFF` |
+
+Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits) e chega ao backlight do LT7680. Os níveis estão calibrados pra bancada — não cegar o operador é prioridade. Em produção, sob luz solar do carro, faz sentido subir DAY pra 255 e revisitar NIGHT.
+
 ---
 
 ## 7. Roadmap
@@ -363,7 +382,7 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 ### 7.2 Decisões em aberto
 
-- **Desligar o display em GRACE / DEEP_SLEEP** — hoje o firmware blanqueia o framebuffer (preto) antes de entrar em sleep, mas o LT7680 e a backlight continuam energizados pelo rail 3.3V/5V permanente. Pra atingir o consumo-alvo de ~10 µA em deep sleep, o display precisa ser desligado de fato. Caminhos prováveis: MOSFET no rail do display chaveado por um GPIO, ou um pino de enable do LT7680 (ver datasheet). Decisão depende de eletrônica — ainda não definida.
+- **Desligar o display em GRACE / DEEP_SLEEP** — resolvido. `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. GPIO 2 já chega ao backlight da placa atual (não precisou refazer trilha). Polaridade invertida da placa é tratada por `BACKLIGHT_ACTIVE_LOW=true` em `Features.h` — se trocar de breakout, basta flipar a flag.
 
 ---
 

@@ -1,4 +1,5 @@
 #include "Tft.h"
+#include "Features.h"
 #include "LCD_init.h"   // ST7701S_Initial() — only included here (single TU)
 
 // --- Double buffer state ---------------------------------------------------
@@ -126,6 +127,32 @@ uint16_t consumptionColor(float kmL) {
     if (kmL < 10.0f) return COL_HOT;
     if (kmL > 14.0f) return COL_GOOD;
     return COL_AMBER;
+}
+
+// --- Backlight (PWM on GPIO 2) ---------------------------------------------
+//
+// LEDC channel 0, ~5 kHz, 8-bit resolution (0..255). Wiring intent: GPIO 2
+// drives the LT7680 BL_CONTROL input (datasheet pin 9). Until the 3.3V
+// hard-tie at BL_CONTROL is cut and rerouted, the PWM only blinks the
+// onboard LED — useful as bench debug feedback.
+
+static constexpr int      BACKLIGHT_PIN     = 2;
+static constexpr int      BACKLIGHT_CHANNEL = 0;
+static constexpr uint32_t BACKLIGHT_FREQ_HZ = 5000;
+static constexpr uint8_t  BACKLIGHT_RES_BITS = 8;
+
+void tftBacklightInit() {
+    ledcSetup(BACKLIGHT_CHANNEL, BACKLIGHT_FREQ_HZ, BACKLIGHT_RES_BITS);
+    ledcAttachPin(BACKLIGHT_PIN, BACKLIGHT_CHANNEL);
+    tftBacklight(255);   // start at full brightness through the same path
+}
+
+void tftBacklight(uint8_t level) {
+    // The API is intuitive — 0 dark, 255 bright. The current breakout
+    // happens to drive the panel inverted (high duty → dim), so flip
+    // before writing when BACKLIGHT_ACTIVE_LOW is set.
+    const uint8_t pwm = pobc::BACKLIGHT_ACTIVE_LOW ? (uint8_t)(255 - level) : level;
+    ledcWrite(BACKLIGHT_CHANNEL, pwm);
 }
 
 // --- Anti-image-sticking ---------------------------------------------------
