@@ -9,7 +9,6 @@
 #include "ResetScreen.h"
 #include "SystemScreen.h"
 #include "ConsumptionScreen.h"
-#include "DutyScreen.h"
 #include "config.h"
 
 #define NTP_SERVER          "pool.ntp.org"
@@ -26,7 +25,6 @@ struct ScreenDef {
 static const ScreenDef SCREENS[] = {
     { displaySystem,      systemResets      },
     { displayConsumption, consumptionResets },
-    { displayDuty,        dutyResets        },
 };
 static constexpr uint8_t SCREEN_COUNT  = sizeof(SCREENS) / sizeof(SCREENS[0]);
 static constexpr uint8_t HOME_SCREEN   = 1;   // ConsumptionScreen — main / "home"
