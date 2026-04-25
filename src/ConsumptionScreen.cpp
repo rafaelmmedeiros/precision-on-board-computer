@@ -14,15 +14,15 @@ static constexpr int DIV_X       = LEFT_W;
 static constexpr int DIV_W       = 4;
 static constexpr int RIGHT_X     = DIV_X + DIV_W;          // 344
 
-static constexpr int TOP_LABEL_Y = 16;
-static constexpr int FOOTER_Y    = 286;
-static constexpr int FOOTER_DIV  = 270;
+static constexpr int TOP_LABEL_Y = 8;
+static constexpr int FOOTER_DIV  = 252;
+static constexpr int FOOTER_Y    = 260;
 
 // Chart bounding box (right side).
 static constexpr int CHART_X      = RIGHT_X + 60;          // leave room for Y labels
 static constexpr int CHART_RIGHT  = USR_W - 18;
-static constexpr int CHART_TOP    = 56;
-static constexpr int CHART_BOTTOM = 230;
+static constexpr int CHART_TOP    = 64;
+static constexpr int CHART_BOTTOM = 220;
 static constexpr int CHART_W      = CHART_RIGHT - CHART_X;
 static constexpr int CHART_H      = CHART_BOTTOM - CHART_TOP;
 
@@ -126,12 +126,12 @@ void displayConsumption() {
     const uint16_t heroCol = consumptionColor(instant);
     const int heroW = measureBitmapText(DSEG7_120, heroBuf);
     const int heroX = (LEFT_W - heroW) / 2;
-    drawBitmapText(heroX, 80, DSEG7_120, heroBuf, heroCol);
+    drawBitmapText(heroX, 64, DSEG7_120, heroBuf, heroCol);
 
-    drawCenteredInU(0, LEFT_W, 220, 1, 2, COL_AMBER, "KM/L");
+    drawCenteredInU(0, LEFT_W, 196, 1, 2, COL_AMBER, "KM/L");
 
     // --- DIVIDERS ---------------------------------------------------------
-    fillRectU(DIV_X,    20, DIV_W,                FOOTER_DIV - 20, COL_AMBER);
+    fillRectU(DIV_X,    16, DIV_W,                FOOTER_DIV - 16, COL_AMBER);
     fillRectU(0,        FOOTER_DIV, USR_W,        2,               COL_AMBER);
 
     // --- RIGHT SIDE: history bar chart ------------------------------------
