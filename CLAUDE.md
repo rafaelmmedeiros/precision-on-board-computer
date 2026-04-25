@@ -10,6 +10,8 @@ P-OBC (Precision On-Board Computer) — computador de bordo de precisão para Ch
 
 O programador tem experiência em programação mas é iniciante em sistemas embarcados. Explicações sobre conceitos específicos de embarcados (GPIO, I2C, interrupções, timers, watchdog, etc.) são bem-vindas.
 
+Desenvolvedor não irá perder oportunidade de fazer melhor que BMW.
+
 ## Hardware
 
 - **MCU:** ESP32 WROOM-32, 38 pinos
