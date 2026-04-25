@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <esp_sleep.h>
+#include <esp_wifi.h>
+#include <esp_bt.h>
 #include <driver/rtc_io.h>
 #include <time.h>
 
@@ -206,8 +208,24 @@ static void applyBacklightPolicy() {
     tftBacklight(level);
 }
 
+// Bring the radios down before any sleep. esp_light_sleep_start() returns
+// almost immediately while WiFi is connected without DTIM power save, which
+// pinned the loop at high current in early bench measurements. We don't
+// bring WiFi back on light-sleep wake — OTA is a boot-time window only.
+static void shutdownRadios() {
+    static bool s_done = false;
+    if (s_done) return;
+    ArduinoOTA.end();
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+    esp_wifi_stop();
+    btStop();
+    s_done = true;
+}
+
 static void enterLightSleep() {
-    // Wake on ignition return (GPIO 14 going LOW) or after the remaining
+    shutdownRadios();
+    // Wake on ignition return (GPIO 13 going LOW) or after the remaining
     // grace window has fully elapsed in real time.
     esp_sleep_enable_ext0_wakeup(IGN_PIN, 0);   // 0 = wake on LOW
     esp_sleep_enable_timer_wakeup(250000ULL);   // re-check every 250 ms
@@ -219,6 +237,7 @@ static void enterLightSleep() {
 }
 
 static void enterDeepSleep() {
+    shutdownRadios();
     // Hold the pull-up alive across deep sleep so the line doesn't float.
     rtc_gpio_pullup_en(IGN_PIN);
     rtc_gpio_pulldown_dis(IGN_PIN);
