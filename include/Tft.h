@@ -12,7 +12,7 @@ constexpr uint16_t COL_BG    = 0x0000;   // black
 constexpr uint16_t COL_AMBER = 0xFC40;   // ~#FF8A00 dark orange — primary UI color
 constexpr uint16_t COL_HOT   = 0xF800;   // red
 constexpr uint16_t COL_COLD  = 0x449F;   // sky blue
-constexpr uint16_t COL_GOOD  = 0x87F0;   // soft green
+constexpr uint16_t COL_GOOD  = 0x07E0;   // pure green (R=0, G=63, B=0)
 
 // One-time display bring-up: LT7680 + ST7701S init, font rotation, main window.
 void tftInit();
