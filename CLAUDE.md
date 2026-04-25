@@ -327,7 +327,7 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 ### 7.2 Decisões em aberto
 
-- **Rotação do display final** — texto sai legível mas ponta-cabeça com o mount datasheet. Detalhes e opções na seção 8.2.
+(nenhuma no momento)
 
 ---
 
@@ -349,7 +349,7 @@ Seções de referência técnica. Não precisa ler na entrada — consultar quan
 
 **Modos de cor:** 16bpp RGB565 (atual, 65K cores), 24bpp RGB888 (16M, 2× memória), 8bpp indexado.
 
-**Texto via CGROM interna:** 8×16, 12×24, 16×32 ASCII (Latin-1/ISO-8859-1/2/3/4), zoom 1-4x independente em W/H, rotação 0° ou 90° (com H-flip embutido no 90° — ver 8.2).
+**Texto via CGROM interna:** 8×16, 12×24, 16×32 ASCII (Latin-1/ISO-8859-1/2/3/4), zoom 1-4x independente em W/H, rotação 0° ou 90° (no modo 90° há H-flip embutido — compensado por `VDIR=1`, mount atual).
 
 **Limitações reais:**
 - Sem rotação nativa de bitmaps (só texto 0°/90°)
@@ -360,25 +360,6 @@ Seções de referência técnica. Não precisa ler na entrada — consultar quan
 **Disponível pra adicionar:**
 - Chip de flash SPI externo (W25Q64) nos pinos SFI do LT7680 — fontes TrueType pré-rasterizadas, sprites grandes
 - Bitmap font em software — sem hardware extra
-
-### 8.2 Decisão pendente: rotação do display
-
-Estado atual: `Font_90_degree` + `VDIR=1` (reg 0x12 bit 3). Texto sai **legível mas ponta-cabeça** do ponto de vista do motorista com mount datasheet (FPC à direita).
-
-Combinações testadas:
-- `Font_90_degree` sozinho → texto espelhado ("AMBULÂNCIA")
-- `Font_90_degree + VDIR=1` → legível, ponta-cabeça (estado atual)
-- `Font_90_degree + HDIR=1` → chuva de pixel (corrompe framebuffer SDRAM)
-- `Font_90_degree + VDIR=1 + HDIR=1` → chuva de pixel
-- Flip 180° em software (coord flip + string reverse) → ponta-cabeça **e** espelhado
-
-`Font_90_degree` no LT7680 é "CCW 90° + H-flip" embutido (datasheet). `VDIR` é o único scan flip compatível com o framebuffer. Sobra rotação fixa de 180° off em relação ao mount "FPC direita = bottom".
-
-**Caminhos:**
-
-1. **Aceitar ponta-cabeça e inverter mount físico** — girar display 180° no gabinete (FPC sai pela esquerda). Sem código novo.
-2. **Bitmap font em software** — abandonar CGROM. Tabela ASCII 5×7 ou 8×8 (~760 bytes) rasterizada com `DrawSquare_Fill` em posições rotacionadas pela CPU. Controle total. Custo: ~20 ms por string de 10 chars, aceitável a 10 Hz.
-3. **Mount portrait 320×960** — abandonar landscape, sidebar automotivo vertical. `Font_0_degree` default, sem flips. Requer redesenho da UI.
 
 ---
 
