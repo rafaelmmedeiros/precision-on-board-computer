@@ -46,16 +46,22 @@ static float simTempExt() {
 // --- Screen render ---------------------------------------------------------
 
 void displaySystem() {
+    static const char* const PT_WEEKDAYS[7] = {
+        "DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"
+    };
+
     struct tm timeinfo;
     char hhStr[4] = "--";
     char mmStr[4] = "--";
-    char dateStr[8] = "--/--";
+    char dateStr[16] = "--- --/--";
     bool haveTime = getLocalTime(&timeinfo);
     bool colonOn  = true;
     if (haveTime) {
-        strftime(hhStr,   sizeof(hhStr),   "%H",    &timeinfo);
-        strftime(mmStr,   sizeof(mmStr),   "%M",    &timeinfo);
-        strftime(dateStr, sizeof(dateStr), "%d/%m", &timeinfo);
+        strftime(hhStr, sizeof(hhStr), "%H", &timeinfo);
+        strftime(mmStr, sizeof(mmStr), "%M", &timeinfo);
+        const char* wd = PT_WEEKDAYS[timeinfo.tm_wday & 7];
+        snprintf(dateStr, sizeof(dateStr), "%s %02d/%02d",
+                 wd, timeinfo.tm_mday, timeinfo.tm_mon + 1);
         colonOn = (timeinfo.tm_sec % 2) == 0;
     }
 
