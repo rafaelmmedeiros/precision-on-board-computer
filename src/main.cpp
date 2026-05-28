@@ -146,7 +146,7 @@ void setup() {
     buttonsInit();
     telemetryInit();
     tripLogInit();
-    powerInit();   // reads GPIO 14, recovers stash, picks initial state
+    powerInit();   // reads GPIO 13, recovers stash, picks initial state
 
     tftInit();
     tftBacklightInit();

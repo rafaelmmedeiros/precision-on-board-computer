@@ -134,7 +134,7 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 | Painel ST7701S — SW-SPI CLK | 14 | Bring-up do painel só no `tftInit()`, depois idle |
 | Painel ST7701S — SW-SPI CS | 17 | Bring-up do painel só no `tftInit()`, depois idle |
 | Painel ST7701S — SW-SPI DI | 4 | Bring-up do painel só no `tftInit()`, depois idle |
-| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. API `tftBacklight(0..255)`. Polaridade active-low na placa atual (`BACKLIGHT_ACTIVE_LOW=true`). |
+| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. API `tftBacklight(0..255)`. Placa atual é active-high (`BACKLIGHT_ACTIVE_LOW=false`). Hoje o PWM só chega ao LED onboard — alcança o BL_CONTROL do LT7680 após cortar o hard-tie de 3.3V. |
 | Sinal de ignição | 13 | Digital active-low. `INPUT_PULLUP` interno + chave/opto pra GND. RTC-capable → `ext0` wake source. Bench: chave protoboard. Produção: PC817. |
 | Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo 10k pra 3.3V. Active-low. Lido por `telemetryHeadlightOn()`. |
 | Botão R | 25 | Pull-up interno, chave pra GND |
@@ -278,12 +278,13 @@ constexpr bool USE_REAL_TEMP_SENSORS = false; // DS18B20 (pino a alocar — ver 
 constexpr bool USE_REAL_GPS          = false; // UART2
 constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 (digital active-low)
 constexpr bool USE_REAL_FAROL        = true;  // GPIO 35 (digital active-low, sem sim)
+constexpr bool ANY_SIMULATED = /* OR dos 5 sims negados */; // gate do BENCH_TIME_SCALE
 constexpr float BENCH_TIME_SCALE     = 60.0f; // 1 real sec = 1 sim min
 
-constexpr uint8_t  BACKLIGHT_LEVEL_DAY   = 153;  // 60 % na bancada
-constexpr uint8_t  BACKLIGHT_LEVEL_NIGHT =  76;  // 30 % na bancada
+constexpr uint8_t  BACKLIGHT_LEVEL_NIGHT =  20;   // bancada (conservador)
+constexpr uint8_t  BACKLIGHT_LEVEL_DAY   =  85;   // bancada (conservador; produção → 255)
 constexpr uint8_t  BACKLIGHT_LEVEL_OFF   =   0;
-constexpr bool     BACKLIGHT_ACTIVE_LOW  = true;
+constexpr bool     BACKLIGHT_ACTIVE_LOW  = false; // placa atual: active-high
 
 constexpr uint32_t POST_TRIP_SUMMARY_MS                = 60UL * 1000UL;        // 60 s
 constexpr uint32_t GRACE_PERIOD_MS                     = 60UL * 60UL * 1000UL; // 1 h
@@ -293,7 +294,7 @@ constexpr uint32_t BENCH_GRACE_MS_OVERRIDE             = 30UL * 1000UL;        /
 
 Telemetry usa `if constexpr` nessas flags. Branches mortos somem do binário em compile time — zero custo de runtime.
 
-Quando todas as flags forem true, `BENCH_TIME_SCALE` colapsa pra 1.0 e a sim para. Hoje na bancada todas false — o sim corre 60x acelerado pra animar o medidor de tanque em minutos em vez de horas. Os dois overrides `BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE` e `BENCH_GRACE_MS_OVERRIDE` colapsam pros valores reais (`POST_TRIP_SUMMARY_MS` / `GRACE_PERIOD_MS`) quando `USE_REAL_IGNITION` é true — produção sempre usa 60s + 1h.
+Quando os cinco flags de simulação (`INJECTOR`, `VSS`, `VOLTAGE`, `FUEL_LEVEL`, `TEMP_SENSORS`) forem todos true, `ANY_SIMULATED` vira false e `BENCH_TIME_SCALE` colapsa pra 1.0 (a sim para). `GPS`, `IGNITION` e `FAROL` **não** entram nessa conta — só os cinco sims integráveis. Hoje na bancada os cinco estão false, então o sim corre 60x acelerado pra animar o medidor de tanque em minutos em vez de horas. Os dois overrides `BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE` e `BENCH_GRACE_MS_OVERRIDE` colapsam pros valores reais (`POST_TRIP_SUMMARY_MS` / `GRACE_PERIOD_MS`) quando `USE_REAL_IGNITION` é true — produção sempre usa 60s + 1h.
 
 ### 5.6 Layout.h — rails compartilhados
 
@@ -383,12 +384,12 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 | PowerState | Farol off | Farol on |
 |---|---|---|
-| `ACTIVE` | `BACKLIGHT_LEVEL_DAY` (153 ≈ 60 %) | `BACKLIGHT_LEVEL_NIGHT` (76 ≈ 30 %) |
+| `ACTIVE` | `BACKLIGHT_LEVEL_DAY` (85) | `BACKLIGHT_LEVEL_NIGHT` (20) |
 | `POST_TRIP_SUMMARY` | `BACKLIGHT_LEVEL_DAY` | `BACKLIGHT_LEVEL_NIGHT` |
 | `GRACE` | `BACKLIGHT_LEVEL_OFF` (0) | `BACKLIGHT_LEVEL_OFF` |
 | `DEEP_SLEEP_PENDING` | `BACKLIGHT_LEVEL_OFF` | `BACKLIGHT_LEVEL_OFF` |
 
-Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits) e chega ao backlight do LT7680. Os níveis estão calibrados pra bancada — não cegar o operador é prioridade. Em produção, sob luz solar do carro, faz sentido subir DAY pra 255 e revisitar NIGHT.
+Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onboard** — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high (`BACKLIGHT_ACTIVE_LOW=false`); `tftBacklight(0..255)` continua 0=escuro/255=claro e inverte internamente se a flag virar true. Os níveis estão calibrados pra bancada — não cegar o operador é prioridade. Em produção, sob luz solar do carro, faz sentido subir DAY pra 255 e revisitar NIGHT.
 
 ---
 
@@ -406,7 +407,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits) e chega ao backlight do LT7680. Os 
 
 ### 7.2 Decisões em aberto
 
-- **Desligar o display em GRACE / DEEP_SLEEP** — resolvido. `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. GPIO 2 já chega ao backlight da placa atual (não precisou refazer trilha). Polaridade invertida da placa é tratada por `BACKLIGHT_ACTIVE_LOW=true` em `Features.h` — se trocar de breakout, basta flipar a flag.
+- **Desligar o display em GRACE / DEEP_SLEEP** — resolvido (lógica). `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. **Pendência de hardware:** o PWM hoje chega só ao LED onboard — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high, então `BACKLIGHT_ACTIVE_LOW=false`; `tftBacklight()` inverte internamente se um breakout futuro for active-low — basta flipar a flag.
 - **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Como o ESP32 é always-on, não é "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 - **Cidade atual via GPS (reverse geocoding offline)** — pendente. GPS dá só lat/lon; nome de cidade exige tabela embarcada. Motivação: animar a viagem mostrando "cruzando Mossoró", "entrando em Natal" — nenhum TID/MID factory faz isso, encaixa direto no espírito "beat the OEMs". Caminhos: (a) lista IBGE de ~5570 municípios como (nome, lat_centro, lon_centro) + nearest-neighbor — cabe em poucas centenas de KB na flash interna, precisão suficiente pra cidade-resolução; (b) polígonos GeoJSON dos municípios + point-in-polygon — preciso na divisa, mas provavelmente exige flash SPI externo (W25Q64 já previsto em §8.1); (c) online via Nominatim/Google só em WiFi — descartado, carro não tem WiFi em movimento. Default natural é (a) com fallback "fora de área" quando o município mais próximo passar de um raio sane (ex. >50 km). Decidir formato da tabela (PROGMEM array, blob em SPIFFS/LittleFS) e onde a info aparece na UI (footer da SystemScreen? tela própria de viagem?) quando entrar na Fase 3.
 
