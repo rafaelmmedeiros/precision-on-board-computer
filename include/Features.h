@@ -22,8 +22,16 @@ constexpr bool USE_REAL_TEMP_SENSORS = false; // DS18B20 OneWire — pino a aloc
                                               //   (GPIO 4 está em uso pelo painel
                                               //   ST7701S no boot; reuso pós-init
                                               //   é viável, ver CLAUDE.md §4.2)
-constexpr bool USE_REAL_GPS          = false; // GPS NEO-8M — pinos UART a alocar
-                                              //   (16/17 saíram do mapa, ver §4.2)
+constexpr bool USE_REAL_GPS          = true;  // GPS NEO-8M — Serial1, RX=GPIO 39
+                                              //   (input-only), TX=GPIO 15. A
+                                              //   pinagem default de UART2
+                                              //   (16/17) foi tomada pelo RESET
+                                              //   do LT7680 e pelo CS do painel
+                                              //   ST7701S, ver §4.2. Com `false`
+                                              //   o GpsModule simula fix, alti-
+                                              //   tude, heading e grade pra que
+                                              //   o layout da GpsScreen possa
+                                              //   ser revisado sem antena.
 constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 — ignition digital input
                                               //   Bench and production share the
                                               //   same active-low topology (switch

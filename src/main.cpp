@@ -20,6 +20,8 @@
 #include "AutonomyScreen.h"
 #include "HistoryScreen.h"
 #include "TripSummaryScreen.h"
+#include "GpsModule.h"
+#include "GpsScreen.h"
 #include "config.h"
 
 using namespace pobc;
@@ -40,6 +42,7 @@ static const ScreenDef SCREENS[] = {
     { displayConsumption, consumptionResets },
     { displayAutonomy,    autonomyResets    },
     { displayHistory,     historyResets     },
+    { displayGps,         gpsResets         },
 };
 static constexpr uint8_t SCREEN_COUNT  = sizeof(SCREENS) / sizeof(SCREENS[0]);
 static constexpr uint8_t HOME_SCREEN   = 1;   // ConsumptionScreen — main / "home"
@@ -145,6 +148,10 @@ void setup() {
 
     buttonsInit();
     telemetryInit();
+    // Opens Serial1 only. The GPS lives on the ignition-switched rail, so it
+    // may be unpowered right now — the UBX configuration handshake runs lazily
+    // inside gpsTick() whenever the module actually shows up.
+    gpsInit();
     tripLogInit();
     powerInit();   // reads GPIO 13, recovers stash, picks initial state
 
@@ -260,6 +267,7 @@ void loop() {
     switch (powerCurrent()) {
         case PowerState::ACTIVE: {
             telemetryTick();
+            gpsTick();
 
             // Contextual hold thresholds:
             //   - Outside the modal, S is "go home" — fast, non-destructive
@@ -313,10 +321,15 @@ void loop() {
             // Pause telemetry's wall-clock anchor so the post-wake tick
             // doesn't see a giant delta and inject phantom kilometers.
             telemetryPause();
+            gpsPause();
             blankScreen();
             enterLightSleep();
             // Resumes here on ignition wake or the periodic 250 ms timer.
             telemetryPause();
+            // Drops the GPS link so the module is re-verified on the way back:
+            // it was unpowered across the sleep and might not even be the same
+            // unit anymore.
+            gpsPause();
             break;
         }
 
