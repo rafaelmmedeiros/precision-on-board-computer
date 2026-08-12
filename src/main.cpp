@@ -22,6 +22,9 @@
 #include "TripSummaryScreen.h"
 #include "GpsModule.h"
 #include "GpsScreen.h"
+#if POBC_DEBUG_MODE
+#include "GpsDebugScreen.h"
+#endif
 #include "config.h"
 
 using namespace pobc;
@@ -43,11 +46,35 @@ static const ScreenDef SCREENS[] = {
     { displayAutonomy,    autonomyResets    },
     { displayHistory,     historyResets     },
     { displayGps,         gpsResets         },
+    // --- Debug family: always LAST, and only reachable once unlocked. ------
+    // Guarded by the macro rather than `if constexpr` because an array
+    // initializer cannot be conditioned at compile time any other way — and
+    // referencing the draw functions here would keep them in the binary.
+#if POBC_DEBUG_MODE
+    { displayGpsDebug,    gpsDebugResets    },
+#endif
 };
 static constexpr uint8_t SCREEN_COUNT  = sizeof(SCREENS) / sizeof(SCREENS[0]);
+
+// Screens the driver always sees. Everything from this index up is debug and
+// joins the ring only while unlocked, so normal navigation never changes.
+static constexpr uint8_t PROD_SCREEN_COUNT = 5;
+static_assert(PROD_SCREEN_COUNT <= SCREEN_COUNT,
+              "PROD_SCREEN_COUNT must match the production entries in SCREENS[]");
+
 static constexpr uint8_t HOME_SCREEN   = 1;   // ConsumptionScreen — main / "home"
 
-static uint8_t g_screen = HOME_SCREEN;
+static uint8_t g_screen        = HOME_SCREEN;
+static bool    g_debugUnlocked = false;
+
+// Number of screens currently in the navigation ring.
+static uint8_t ringSize() {
+    if constexpr (DEBUG_MODE) {
+        return g_debugUnlocked ? SCREEN_COUNT : PROD_SCREEN_COUNT;
+    } else {
+        return PROD_SCREEN_COUNT;
+    }
+}
 
 // --- Boot messages ---------------------------------------------------------
 
@@ -93,12 +120,13 @@ static void syncTime() {
 // --- Input → navigation ----------------------------------------------------
 
 static void handleNavEvent(ButtonEvent ev) {
+    const uint8_t ring = ringSize();
     switch (ev) {
         case BTN_EV_R_TAP:
-            g_screen = (g_screen + SCREEN_COUNT - 1) % SCREEN_COUNT;
+            g_screen = (uint8_t)((g_screen + ring - 1) % ring);
             break;
         case BTN_EV_S_TAP:
-            g_screen = (g_screen + 1) % SCREEN_COUNT;
+            g_screen = (uint8_t)((g_screen + 1) % ring);
             break;
         case BTN_EV_R_HOLD: {
             const ResetSet rs = SCREENS[g_screen].resets();
@@ -110,6 +138,45 @@ static void handleNavEvent(ButtonEvent ev) {
             break;
         default:
             break;
+    }
+}
+
+// --- Debug unlock ----------------------------------------------------------
+
+// Events arriving before this instant are dropped. Used to swallow the
+// single-button HOLDs that the unlock gesture inevitably goes on to emit.
+static uint32_t g_inputSuppressUntil = 0;
+
+// How long to stay deaf after the combo fires. Must outlast the longest hold
+// still pending from the same physical press: the combo is detected at ~1.2 s
+// and R_HOLD lands at 3.0 s, so anything under 1.8 s would let the reset modal
+// pop open on release. 2.5 s leaves real margin.
+static constexpr uint32_t DEBUG_COMBO_DEAF_MS = 2500;
+
+// Both buttons held together toggles the debug screens in and out of the
+// navigation ring. Detected straight off the live hold counters at
+// DEBUG_UNLOCK_MS (1.2 s), which is deliberately below S's 1.5 s "go home"
+// threshold so the combo is recognised first. Nothing persists: a reboot
+// always comes back locked, which is the safe default in a car.
+static void pollDebugUnlock() {
+    if constexpr (DEBUG_MODE) {
+        if (millis() < g_inputSuppressUntil) return;
+
+        const uint32_t hr = buttonHoldMs(BTN_R);
+        const uint32_t hs = buttonHoldMs(BTN_S);
+        if (hr < DEBUG_UNLOCK_MS || hs < DEBUG_UNLOCK_MS) return;
+
+        g_debugUnlocked = !g_debugUnlocked;
+
+        // Locking while parked on a debug screen would leave g_screen past the
+        // end of the ring — bail out to home.
+        if (!g_debugUnlocked && g_screen >= PROD_SCREEN_COUNT) {
+            g_screen = HOME_SCREEN;
+        }
+
+        g_inputSuppressUntil = millis() + DEBUG_COMBO_DEAF_MS;
+        Serial.printf("[DEBUG] telas de debug %s\n",
+                      g_debugUnlocked ? "visiveis" : "ocultas");
     }
 }
 
@@ -279,7 +346,15 @@ void loop() {
             buttonsSetHoldMs(BTN_S, resetScreenActive() ? BUTTONS_HOLD_DEFAULT_MS
                                                         : BUTTONS_HOLD_NAV_MS);
 
-            const ButtonEvent ev = buttonsPoll();
+            // Check the combo BEFORE polling: it reads the live hold counters,
+            // which buttonsPoll() zeroes once a HOLD fires.
+            pollDebugUnlock();
+
+            // buttonsPoll() is always called so its state machine keeps
+            // advancing; the result is discarded while suppressed.
+            const ButtonEvent raw = buttonsPoll();
+            const ButtonEvent ev  = (millis() < g_inputSuppressUntil)
+                                    ? BTN_EV_NONE : raw;
 
             if (resetScreenActive()) {
                 resetScreenTick(ev);

@@ -262,6 +262,20 @@ Use `Layout.h` em qualquer tela nova. Padrões existentes:
 
 **Feedback visual:** barrinha de 3 px no rodapé cresce conforme o hold avança (âmbar pra R = destrutivo, verde pra S = nav). Some se soltar antes do threshold. Dentro do modal, cada opção tem sua própria barra abaixo do label.
 
+**Gesto extra — R+S juntos por 1.2s:** revela/oculta as telas de debug (§6.7). Detectado direto de `buttonHoldMs()` em `DEBUG_UNLOCK_MS`, **abaixo** do threshold de 1.5s do Hold-S, pra que o combo seja reconhecido antes do "volta pra home" disparar. Depois do combo o input fica surdo por `DEBUG_COMBO_DEAF_MS` (2.5s) pra engolir os holds que a mesma pressão física ainda vai emitir — o Hold-R chega em 3.0s, então uma janela menor que 1.8s deixaria o modal de reset abrir sozinho.
+
+### 6.7 Telas de debug
+
+Família de telas atrás de `POBC_DEBUG_MODE` (`Features.h`). Existem porque diagnóstico que só sai no monitor serial é inútil no carro — que é exatamente onde os subsistemas rodam.
+
+- **Ficam sempre no fim do array `SCREENS[]`**, depois de `PROD_SCREEN_COUNT`. `ringSize()` decide o tamanho do anel: sem unlock, o anel é só produção e a navegação normal não muda em nada.
+- **Unlock não persiste.** Reboot volta travado — default seguro num carro.
+- **O flag é macro + constexpr.** O `#if` no inicializador do `SCREENS[]` é o único jeito de as telas realmente saírem do binário (medido: 2.1 KB); um `constexpr` sozinho não elimina, porque o array referenciaria as funções de desenho. O `constexpr DEBUG_MODE` é o que o resto do código consulta, então a fonte de verdade continua uma só.
+- **Convenção de conteúdo:** densidade acima de beleza. CGROM 12×24 zoom 1 (12 px/char, 80 colunas), sem DSEG7, verde/vermelho como semáforo por item.
+- **Mostrar observado vs desejado, não só OK/BAD.** `GPS DEBUG` exibe `DYN 4/4`, `BAUD 38400/9600` — o valor que o hardware reportou ao lado do que foi pedido. É o que separa ferramenta de diagnóstico de semáforo.
+
+Hoje: **GPS DEBUG** (config UBX verificada no receptor, saúde do link, gates da inclinação, lat/lon). Candidatas naturais quando os sensores chegarem: sensores/ADC e power/sleep.
+
 ### 6.4 Frame pacing e double buffer
 
 - `main.cpp` paceia o loop a `FRAME_PERIOD_MS = 100` (10 fps uniforme em todas as telas)
@@ -376,5 +390,6 @@ platformio.ini  — config (board, deps, flags)
 | `TripLog.{h,cpp}` | persistência NVS do log de viagens + stash slot pra recuperação após brownout em GRACE |
 | `GpsModule.{h,cpp}` | NEO-8M: Serial1, NMEA via TinyGPSPlus, link state machine, config UBX automotiva auto-validada, derivação de inclinação (§5.3) |
 | `GpsScreen.{h,cpp}` | altitude + inclinação + velocidade/heading + qualidade do fix e estado do link |
+| `GpsDebugScreen.{h,cpp}` | tela de debug (§6.7): config UBX observada vs desejada, saúde do link, gates da inclinação, lat/lon |
 | `lib/LT7680/` | driver vendor do controller LT7680 |
 | `include/config.h` | credenciais WiFi (gitignored) |

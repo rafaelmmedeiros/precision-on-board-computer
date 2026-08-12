@@ -143,6 +143,14 @@ static uint32_t g_ackCount   = 0;
 static uint32_t g_nakCount   = 0;
 static uint32_t g_configRuns = 0;
 
+// Observed configuration, filled during VERIFYING. Read-only view exposed via
+// gpsCfgItem() so the debug screen can show want-vs-got per setting.
+static GpsCfgItem g_cfg[STEP_COUNT];
+
+// Grade diagnostics
+static GpsGradeGate g_gradeGate  = GpsGradeGate::NO_FIX;
+static float        g_anchorDist = 0.0f;
+
 // === UBX helpers ===========================================================
 
 static void ubxSend(uint8_t cls, uint8_t id, const uint8_t* payload, uint16_t len) {
@@ -258,18 +266,41 @@ static void pollStep(uint8_t step) {
     ubxSend(CLS_CFG, ID_MSG, p, 2);
 }
 
-// True when the polled response matches what we want.
-static bool stepMatches(uint8_t step, uint8_t cls, uint8_t id,
-                        const uint8_t* p, uint16_t len) {
-    if (cls != CLS_CFG) return false;
-    if (step == STEP_NAV5) return id == ID_NAV5 && len == 36 && p[2] == DYN_MODEL_AUTO;
-    if (step == STEP_RATE) return id == ID_RATE && len == 6 && le16(p) == NAV_MEAS_RATE_MS;
-    if (step == STEP_PRT)  return id == ID_PRT  && len == 20 && le32(p + 8) == BAUD_TARGET;
-    const uint8_t i = (uint8_t)(step - STEP_MSG_FIRST);
+// What this step wants the receiver to report.
+static int32_t stepWant(uint8_t step) {
+    if (step == STEP_NAV5) return DYN_MODEL_AUTO;
+    if (step == STEP_RATE) return NAV_MEAS_RATE_MS;
+    if (step == STEP_PRT)  return (int32_t)BAUD_TARGET;
+    return NMEA_RATES[step - STEP_MSG_FIRST].rate;
+}
+
+// Pull the value this step cares about out of a polled response, or
+// GPS_CFG_NO_REPLY if the frame is not the answer we were waiting for.
+static int32_t stepObserved(uint8_t step, uint8_t cls, uint8_t id,
+                            const uint8_t* p, uint16_t len) {
+    if (cls != CLS_CFG) return GPS_CFG_NO_REPLY;
+    if (step == STEP_NAV5)
+        return (id == ID_NAV5 && len == 36) ? (int32_t)p[2] : GPS_CFG_NO_REPLY;
+    if (step == STEP_RATE)
+        return (id == ID_RATE && len == 6) ? (int32_t)le16(p) : GPS_CFG_NO_REPLY;
+    if (step == STEP_PRT)
+        return (id == ID_PRT && len == 20) ? (int32_t)le32(p + 8) : GPS_CFG_NO_REPLY;
     // CFG-MSG poll answers with the rate for all six ports; UART1 is index 1.
-    return id == ID_MSG && len == 8 &&
-           p[0] == NMEA_CLASS && p[1] == NMEA_RATES[i].id &&
-           p[3] == NMEA_RATES[i].rate;
+    const uint8_t i = (uint8_t)(step - STEP_MSG_FIRST);
+    if (id != ID_MSG || len != 8) return GPS_CFG_NO_REPLY;
+    if (p[0] != NMEA_CLASS || p[1] != NMEA_RATES[i].id) return GPS_CFG_NO_REPLY;
+    return (int32_t)p[3];
+}
+
+// Human-readable name per step, for the debug screen.
+static const char* stepName(uint8_t step) {
+    static const char* const MSG_NAMES[NMEA_RATE_N] = {
+        "GGA", "GLL", "GSA", "GSV", "RMC", "VTG"
+    };
+    if (step == STEP_NAV5) return "DYN";
+    if (step == STEP_RATE) return "RATE";
+    if (step == STEP_PRT)  return "BAUD";
+    return MSG_NAMES[step - STEP_MSG_FIRST];
 }
 
 static void applyStep(uint8_t step) {
@@ -346,6 +377,14 @@ static void beginVerify(bool fresh) {
     g_stepRetry   = 0;
     g_pollPending = false;
     if (fresh) g_verifyPass = 0;
+    // Reset the observed view so the debug screen never shows a stale "OK"
+    // from a previous pass while a new one is still walking the steps.
+    for (uint8_t s = 0; s < STEP_COUNT; ++s) {
+        g_cfg[s].name = stepName(s);
+        g_cfg[s].want = stepWant(s);
+        g_cfg[s].got  = GPS_CFG_NO_REPLY;
+        g_cfg[s].ok   = false;
+    }
     enterState(GpsLink::VERIFYING);
 }
 
@@ -382,8 +421,23 @@ static void refreshCache() {
 
 // Smooth altitude, then take grade over a distance baseline long enough that
 // GPS vertical noise (±10-15 m) cannot dominate the result.
+// Which gate is currently blocking the grade. Evaluated every tick (not only
+// at baseline close) so the debug screen can always answer "why the dashes?".
+static GpsGradeGate gradeGateNow(float dist) {
+    if (!gpsHasFix())                  return GpsGradeGate::NO_FIX;
+    if (g_hdop > GRADE_MAX_HDOP)       return GpsGradeGate::HDOP;
+    if (g_speedKmh < GRADE_MIN_KMH)    return GpsGradeGate::SPEED;
+    if (dist < GRADE_BASELINE_M)       return GpsGradeGate::BASELINE;
+    return GpsGradeGate::OK;
+}
+
 static void updateGrade() {
-    if (!gpsHasFix()) { resetGradeAnchor(); return; }
+    if (!gpsHasFix()) {
+        resetGradeAnchor();
+        g_gradeGate  = GpsGradeGate::NO_FIX;
+        g_anchorDist = 0.0f;
+        return;
+    }
 
     const uint32_t now = millis();
     if (isnan(g_altEma)) {
@@ -402,11 +456,16 @@ static void updateGrade() {
         g_anchorLon   = g_lon;
         g_anchorAlt   = g_altEma;
         g_anchorValid = true;
+        g_anchorDist  = 0.0f;
+        g_gradeGate   = gradeGateNow(0.0f);
         return;
     }
 
     const double d = TinyGPSPlus::distanceBetween(g_anchorLat, g_anchorLon,
                                                   g_lat, g_lon);
+    g_anchorDist = (float)d;
+    g_gradeGate  = gradeGateNow((float)d);
+
     if (d < GRADE_BASELINE_M) return;
 
     // Gates: without them the number would be noise dressed up as data.
@@ -419,9 +478,10 @@ static void updateGrade() {
         g_gradePct = NAN;
     }
 
-    g_anchorLat = g_lat;
-    g_anchorLon = g_lon;
-    g_anchorAlt = g_altEma;
+    g_anchorLat  = g_lat;
+    g_anchorLon  = g_lon;
+    g_anchorAlt  = g_altEma;
+    g_anchorDist = 0.0f;
 }
 
 // === Link state machine ====================================================
@@ -489,7 +549,11 @@ static void tickVerifying() {
     if (!g_pollPending) {
         // A failed PRT is not worth chasing forever: give up on 38400 and let
         // the session run at the stock rate rather than rewriting every boot.
+        // Report the rate we actually settled on rather than "no reply", so
+        // the debug screen tells the truth about the running configuration.
         if (g_step == STEP_PRT && g_prtFails >= MAX_PRT_FAILS) {
+            g_cfg[STEP_PRT].got = (int32_t)g_baud;
+            g_cfg[STEP_PRT].ok  = (g_cfg[STEP_PRT].got == g_cfg[STEP_PRT].want);
             ++g_step;
             return;
         }
@@ -501,7 +565,11 @@ static void tickVerifying() {
     }
 
     if (g_respHave) {
-        if (!stepMatches(g_step, g_respCls, g_respId, g_respBuf, g_respLen)) {
+        const int32_t got = stepObserved(g_step, g_respCls, g_respId,
+                                         g_respBuf, g_respLen);
+        g_cfg[g_step].got = got;
+        g_cfg[g_step].ok  = (got != GPS_CFG_NO_REPLY && got == g_cfg[g_step].want);
+        if (!g_cfg[g_step].ok) {
             g_stepBad = (uint16_t)(g_stepBad | (1u << g_step));
         }
         g_respHave    = false;
@@ -578,6 +646,24 @@ static void tickSim() {
     g_courseDeg = fmodf(t * 4.0f, 360.0f);
     g_gradePct  = 6.0f * cosf(t * 2.0f * (float)M_PI / 90.0f);
     g_link      = GpsLink::READY;
+    g_lat       = -5.1875;      // Mossoró, roughly — enough for the debug view
+    g_lon       = -37.3444;
+    g_gradeGate = GpsGradeGate::OK;
+    g_baud      = BAUD_TARGET;
+
+    // Present a fully-verified config so the debug screen layout can be
+    // reviewed on the desk exactly as it will look in the car.
+    static bool seeded = false;
+    if (!seeded) {
+        for (uint8_t s = 0; s < STEP_COUNT; ++s) {
+            g_cfg[s].name = stepName(s);
+            g_cfg[s].want = stepWant(s);
+            g_cfg[s].got  = stepWant(s);
+            g_cfg[s].ok   = true;
+        }
+        seeded = true;
+    }
+    g_anchorDist = fmodf(t * 20.0f, GRADE_BASELINE_M);
 }
 
 // === Public API ============================================================
@@ -663,3 +749,27 @@ uint32_t gpsFailedChecksum() { return g_gps.failedChecksum(); }
 uint32_t gpsAckCount()       { return g_ackCount; }
 uint32_t gpsNakCount()       { return g_nakCount; }
 uint32_t gpsConfigRuns()     { return g_configRuns; }
+uint32_t gpsBaud()           { return g_baud; }
+
+double gpsLat() { return g_lat; }
+double gpsLon() { return g_lon; }
+
+GpsGradeGate gpsGradeGate()      { return g_gradeGate; }
+float        gpsGradeAnchorM()   { return g_anchorDist; }
+float        gpsGradeBaselineM() { return GRADE_BASELINE_M; }
+float        gpsAltitudeRawM()   { return g_altM; }
+
+uint8_t gpsCfgCount() { return STEP_COUNT; }
+
+const GpsCfgItem& gpsCfgItem(uint8_t i) {
+    static const GpsCfgItem EMPTY = { "?", 0, GPS_CFG_NO_REPLY, false };
+    if (i >= STEP_COUNT) return EMPTY;
+    return g_cfg[i];
+}
+
+bool gpsCfgAllOk() {
+    for (uint8_t s = 0; s < STEP_COUNT; ++s) {
+        if (!g_cfg[s].ok) return false;
+    }
+    return true;
+}

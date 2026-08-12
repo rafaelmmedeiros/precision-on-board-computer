@@ -73,3 +73,42 @@ Clamp de sanidade em ±25%.
 a 1 na primeira partida com um módulo de fábrica e **ficar em 1**. Se subir a
 cada boot, ou o `CFG-CFG` não pegou ou algum poll está sendo comparado errado.
 `gpsAckCount()`/`gpsNakCount()` contam os ACK-ACK/ACK-NAK do UBX.
+
+## Superfície de diagnóstico (consumida pela GPS DEBUG)
+
+O `VERIFYING` não descarta as respostas: guarda **o que o receptor reportou** ao
+lado do que foi pedido, item por item. É isso que a tela de debug (CLAUDE.md
+§6.7) mostra, e é a resposta honesta pra "a config aplicou?" — reflete o
+hardware, não o que o firmware acha que mandou.
+
+```cpp
+struct GpsCfgItem { const char* name; int32_t want; int32_t got; bool ok; };
+uint8_t           gpsCfgCount();          // 9: DYN, RATE, BAUD + 6 sentenças
+const GpsCfgItem& gpsCfgItem(uint8_t i);
+bool              gpsCfgAllOk();
+uint32_t          gpsBaud();              // taxa em que o link está aberto
+```
+
+`got == GPS_CFG_NO_REPLY` (-1) significa que o poll expirou. Exceção honesta: se
+o `CFG-PRT` foi abandonado após `MAX_PRT_FAILS`, o item `BAUD` reporta a taxa em
+que realmente ficamos (ex. `38400/9600`) em vez de "sem resposta" — a tela conta
+a verdade sobre a config em execução.
+
+**Gates da inclinação expostos.** "Por que INCL mostra `--`?" tinha 4 respostas
+possíveis; agora `gpsGradeGate()` diz qual:
+
+| `GpsGradeGate` | Significado |
+|---|---|
+| `OK` | grade viva |
+| `NO_FIX` | sem fix válido |
+| `HDOP` | fix frouxo demais (> 2.0) |
+| `SPEED` | abaixo do gate de 20 km/h |
+| `BASELINE` | ainda acumulando os 200 m |
+
+Mais `gpsGradeAnchorM()` / `gpsGradeBaselineM()` pra mostrar progresso em vez de
+um `--` morto, e `gpsAltitudeRawM()` ao lado de `gpsAltitudeM()` — o vão entre os
+dois é a EMA trabalhando, e um raw selvagem explica uma grade nervosa.
+
+O sim (`USE_REAL_GPS = false`) preenche um snapshot todo verificado e uma posição
+plausível, pra que o layout da tela de debug possa ser revisado na mesa
+exatamente como vai aparecer no carro.

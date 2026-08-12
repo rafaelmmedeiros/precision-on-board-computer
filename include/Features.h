@@ -10,7 +10,29 @@
 // branches are completely eliminated by the compiler; there is no runtime
 // cost and no dead-code in the firmware image.
 
+// === Debug screens ========================================================
+//
+// Declared as BOTH a macro and a constexpr, on purpose. The macro lets
+// main.cpp drop the debug entries out of the SCREENS[] initializer with
+// `#if`, which is the only way they truly leave the binary — a constexpr
+// alone cannot, because the array would still reference the draw functions
+// and the linker would keep them. Measured: flipping this to 0 removes
+// ~2.1 KB of flash. The constexpr is what the rest of the code branches on,
+// so there is still a single source of truth.
+//
+// 1 = debug screens compiled in, hidden behind the unlock gesture (both
+//     buttons held together ~1.2 s) so they never clutter normal navigation.
+// 0 = they do not exist at all; the nav ring is production-only.
+#define POBC_DEBUG_MODE 1
+
 namespace pobc {
+
+constexpr bool DEBUG_MODE = (POBC_DEBUG_MODE != 0);
+
+// How long both buttons must be held together to reveal / hide the debug
+// screens. Must stay below BUTTONS_HOLD_NAV_MS (1500) so the combo is
+// recognised before S's own "go home" hold fires.
+constexpr uint32_t DEBUG_UNLOCK_MS = 1200;
 
 // === Sensor flags =========================================================
 
