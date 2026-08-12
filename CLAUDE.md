@@ -38,17 +38,17 @@ Este documento deve permanecer navegável. Soft caps:
 - **Arquivo inteiro > 400 linhas** → considerar extração
 - **Qualquer seção > 80 linhas** → forte candidata a extração
 
-Destino de extração: `docs/<topico>.md`, indexado a partir daqui com **uma linha de resumo + link**. A seção 8 (Engineering references) é a primeira candidata natural quando crescer.
+Destino de extração: `docs/<topico>.md`, indexado a partir daqui com **uma linha de resumo + link**. A **§8 (Engineering references)** é o índice central de tudo que já saiu.
 
-Formato do índice quando uma seção for extraída:
+Já extraído (o padrão a seguir está nesses arquivos): mapa de pinos, padrões de arquitetura, GpsModule e LT7680 — ver §8. O formato do índice é uma linha por doc:
 
 ```markdown
-## 8. Engineering references
-- [LT7680 GPU capabilities](docs/lt7680-gpu.md) — primitivas GPU disponíveis, modos de cor, fontes
-- [Display rotation problem](docs/display-rotation.md) — por que texto sai flipado, três caminhos de resolução
+- [LT7680 — capacidades e limites da GPU](docs/lt7680-gpu.md) — primitivas GPU disponíveis, modos de cor, fontes
 ```
 
-Arquivos extraídos mantêm o mesmo padrão (markdown, headers numerados ou nomeados, refs ao código quando útil, sem floreio).
+**Regra da extração:** o que fica no CLAUDE.md é a **regra curta** — o que uma sessão precisa saber pra não errar sem abrir mais nada. O que vai pro `docs/` é a **explicação**: tabelas longas, transições passo a passo, justificativas. Se uma seção extraída perdeu uma regra load-bearing no caminho, ela volta pra cá em uma linha.
+
+Arquivos extraídos mantêm o mesmo padrão (markdown, headers nomeados, refs ao código quando útil, sem floreio) e abrem declarando de qual seção do CLAUDE.md saíram.
 
 ---
 
@@ -134,70 +134,16 @@ pio run -t clean                         # Limpa build
 
 ### 4.2 Mapa de pinos ESP32
 
-A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-up SW-SPI do painel ST7701S e o BL_CONTROL. Mais 4 pinos pra ignição/farol/botões e 2 pro GPS (Serial1). Total: **15 pinos físicos conectados hoje** — a contagem anterior de "14" estava errada, a tabela abaixo sempre teve 13 linhas.
+**Ground truth completo:** [Mapa de pinos ESP32](docs/pinout.md) — tabelas de
+conectados / reservados / sem alocação / livres, e as notas de design (reuso dos
+pinos do painel ST7701S, ignição RTC-capable, expansão via I²C).
 
-#### Conectados (hardware na bancada)
-
-| Função | GPIO | Notas |
-|--------|------|-------|
-| Display SCK (VSPI, runtime) | 18 | LT7680 hardware SPI clock |
-| Display MOSI (VSPI, runtime) | 23 | LT7680 hardware SPI data in |
-| Display MISO (VSPI, runtime) | 19 | LT7680 hardware SPI data out |
-| Display CS (LT7680) | 5 | VSPI chip-select runtime |
-| Display RESET (LT7680) | 16 | Pulso só no `tftInit()`, depois idle |
-| Painel ST7701S — SW-SPI CLK | 14 | Bring-up do painel só no `tftInit()`, depois idle |
-| Painel ST7701S — SW-SPI CS | 17 | Bring-up do painel só no `tftInit()`, depois idle |
-| Painel ST7701S — SW-SPI DI | 4 | Bring-up do painel só no `tftInit()`, depois idle |
-| Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. API `tftBacklight(0..255)`. Placa atual é active-high (`BACKLIGHT_ACTIVE_LOW=false`). Hoje o PWM só chega ao LED onboard — alcança o BL_CONTROL do LT7680 após cortar o hard-tie de 3.3V. |
-| Sinal de ignição | 13 | Digital active-low. `INPUT_PULLUP` interno + chave/opto pra GND. RTC-capable → `ext0` wake source. Bench: chave protoboard. Produção: PC817. |
-| Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo 10k pra 3.3V. Active-low. Lido por `telemetryHeadlightOn()`. |
-| Botão R | 25 | Pull-up interno, chave pra GND |
-| Botão S | 26 | Pull-up interno, chave pra GND |
-| GPS RX (Serial1) | 39 (VN) | GPS TX → ESP32. Input-only, sem pull interno — o GPS aciona a linha push-pull em 3.3V, então não precisa resistor. |
-| GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.9). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. |
-
-#### Reservados (pinos comprometidos, hardware ainda não montado)
-
-| Função | GPIO | Notas |
-|--------|------|-------|
-| I²C SDA (DS3231) | 21 | Padrão Wire — DS3231 ainda não soldado |
-| I²C SCL (DS3231) | 22 | Padrão Wire |
-| Voltímetro | 32 | ADC1, divisor 14.4V→3.3V. Mede bateria/alternador. |
-| Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi) |
-| Injeção (bicos) ECU | 34 | Input-only, interrupt, divisor 5V→3.3V |
-| VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
-
-#### Sem pino atribuído (a alocar quando hardware chegar)
-
-| Função | Status | Caminhos |
-|---|---|---|
-| Buzzer | Sem alocação | GPIO 27 era a intenção original — ainda livre se nada brigar até lá. |
-| DS18B20 ×2 (interno + externo, OneWire) | Sem alocação | Opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
-
-#### Truly livres no ESP32
-
-| GPIO | Notas |
-|---|---|
-| 27 | Reservado pra buzzer (intenção original mantida) |
-| 12 | Strapping perigoso (define voltagem do flash interno) — **evitar** salvo último recurso. |
-| 0 | Strapping (boot mode) — **evitar**. |
-
-O GPS fechou os dois últimos pinos confortáveis (39 e 15). Qualquer periférico
-novo daqui pra frente entra por **I²C (21/22)**, por reuso pós-`tftInit()` dos
-pinos do painel (4/14/17), ou paga o preço de 12/0.
-
-**Reuso de 14/17 pra UART foi avaliado e descartado.** Eletricamente daria, mas
-`ST7701S_Initial()` deixa os três pinos como saídas push-pull em HIGH sem
-teardown; usar 14 como RX de UART faria o CLK do ST7701S oscilar enquanto o CS
-(17) também alterna, o que pode empurrar lixo pro registrador de config do
-painel. Como 39/15 estavam livres, não valia o risco.
-
-**Notas de design:**
-
-- **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. NÃO é strapping pin. Antes da arquitetura always-on a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
-- **Pinos do painel ST7701S são reutilizáveis:** GPIO 4, 14, 17 só são pulsados uma vez em `ST7701S_Initial()` (chamado dentro de `tftInit()`). Após isso ficam idle e podem ser reconfigurados via `pinMode()` pra outra função (OneWire, UART, etc.). Documentar bem quem reaproveita o quê pra evitar conflito de ordem de init.
-- **Display RESET (16) também só é pulsado no boot,** mas é mais arriscado reaproveitar — se algum reset transiente for emitido depois (raro), bagunça o periférico que estiver lá.
-- **Expansão futura via I²C:** o bus 21/22 escala — qualquer periférico I²C novo entra sem custo de pino, só conferindo conflito de endereço. Útil quando aparecer um sensor I²C novo, expansor de GPIO ou ADC externo.
+Resumo pra decisão rápida: **15 pinos conectados** hoje — 9 do display+backlight,
+4 de ignição/farol/botões, 2 do GPS (Serial1 em 39/15). Reservados por comentário
+mas ainda sem código: 21/22 (I²C), 32 (voltímetro), 33 (boia), 34 (injeção),
+36 (VSS). **Só sobram 27 (buzzer), 12 e 0** — os dois últimos são strapping e
+devem ser evitados. Ou seja: periférico novo daqui pra frente entra por
+**I²C (21/22)** ou por **reuso pós-`tftInit()` de 4/14/17**.
 
 ### 4.3 Sinais do carro
 
@@ -238,7 +184,7 @@ Telemetry  ──reads──>  Features (flags + BENCH_TIME_SCALE)
    └─ TripSummaryScreen (só durante POST_TRIP_SUMMARY)
 
 GpsModule ──reads/writes──> Serial1 (GPIO 39 RX / 15 TX)
-   │   NMEA via TinyGPSPlus + handshake UBX auto-validado (§5.9)
+   │   NMEA via TinyGPSPlus + handshake UBX auto-validado (§5.3)
    └─ GpsScreen (getters read-only)
       Nenhum outro módulo consome GPS: Telemetry segue independente.
 
@@ -251,117 +197,22 @@ Tft + BitmapFont + Fonts → todos os Screens
 LT7680 (lib/) → Tft
 ```
 
-### 5.2 Padrão Telemetry — single source of truth
+### 5.2 Padrões — Telemetry, Screen, input, layout, persistência, power
 
-`Telemetry` é dona de **todo** o estado físico do veículo. Telas são **render puro**, nunca escrevem em estado.
+**Detalhe completo:** [Arquitetura — padrões e módulos](docs/architecture.md) —
+cada padrão explicado, mais a state machine do PowerState transição por transição.
 
-- `telemetryTick()` chamado **uma vez por iteração** do loop principal, **antes** de qualquer render. Avança regime, integradores de viagem, tank drain, histórico, voltagem, temperaturas — tudo.
-- Telas leem via getters (`telemetryKmL()`, `telemetryTankL()`, `telemetryVoltage()`, etc.) e nunca conhecem detalhes da simulação ou do sensor real por trás.
-- **Novos sensores ou simulações default vão pra Telemetry.** Telas continuam intocadas.
-- Resets centralizados: `telemetryResetTrip()` zera km e litros atomicamente. Telas delegam via suas `ResetSet`s.
+As regras que valem em toda sessão, sem precisar abrir o doc:
 
-Quando um sensor real for integrado, troca-se o branch `if constexpr (USE_REAL_*)` em Telemetry — telas não precisam saber.
+- **Telemetry é dona de todo o estado físico do veículo.** Telas são render puro e nunca escrevem. `telemetryTick()` roda exatamente **uma vez** por iteração, **antes** de qualquer render. Sensor ou simulação nova entra na Telemetry, não na tela.
+- **Cada tela expõe `displayX()` + `xResets()`** e não guarda estado entre frames além de UI ephemera (cursor, animação). Modelo fica na Telemetry ou no TripLog.
+- **`main.cpp` roteia o input:** se `resetScreenActive()` → `resetScreenTick(ev)`; senão `handleNavEvent(ev)`. Tap troca tela, Hold R abre o modal de resets, Hold S volta pra home.
+- **`Features.h` usa `if constexpr`** — branches mortos somem em compile time, custo zero de runtime. `ANY_SIMULATED` conta **só** os cinco sensores integráveis (INJECTOR, VSS, VOLTAGE, FUEL_LEVEL, TEMP_SENSORS); GPS, IGNITION e FAROL **não** entram. Quando os cinco viram `true`, `BENCH_TIME_SCALE` colapsa pra 1.0.
+- **Toda tela nova puxa os rails de `Layout.h`.** Ajuste global = uma constante num lugar.
+- **NVS via Preferences** é a persistência do projeto. SD card e exportação estão explicitamente fora de escopo.
+- **`powerTick()` é a primeira coisa do loop**, antes de qualquer leitura de telemetria. Fora de ACTIVE o `telemetryTick()` **não** é chamado — motor desligado não avança integradores.
 
-### 5.3 Padrão Screen
-
-Cada tela expõe duas funções:
-
-```cpp
-void displayX();           // render puro — lê telemetry, desenha
-ResetSet xResets();        // 0..2 opções de reset contextuais
-```
-
-`ResetSet` (em `include/Screens.h`) descreve o que aparece no modal de reset quando o usuário faz hold-R nessa tela. Ex.: ConsumptionScreen expõe `[R] Encerrar viagem`, HistoryScreen expõe `[R] Apagar histórico`.
-
-Telas **não** mantêm estado entre frames além de UI ephemera (cursor, animação). Tudo de modelo está em Telemetry ou TripLog.
-
-### 5.4 Input pipeline
-
-`Buttons` (`include/Buttons.h`):
-- Polling em GPIO 25 (R) e 26 (S), pull-up interno, debounce 25 ms
-- Eventos emitidos: `BTN_EV_R_TAP`, `BTN_EV_S_TAP`, `BTN_EV_R_HOLD`, `BTN_EV_S_HOLD`
-- Tap dispara no release (se hold não tiver disparado antes); hold dispara quando o threshold é cruzado
-- Threshold por botão é configurável via `buttonsSetHoldMs()` — `main.cpp` muda contextualmente: 1.5s pra S fora do modal (nav rápido) vs 3s dentro (confirm destrutivo)
-
-`main.cpp` decide o roteamento:
-- Se `resetScreenActive()` → eventos vão pro modal (`resetScreenTick(ev)`)
-- Caso contrário → `handleNavEvent(ev)` (Tap = troca tela, Hold R = abre modal de resets, Hold S = home)
-
-`ResetScreen` (`include/ResetScreen.h`):
-- Recebe `ResetSet` da tela origem
-- Renderiza opções com barra de progresso por hold
-- Tap = cancela; Hold confirma a opção respectiva
-- Toast "X RESETADO" ao confirmar, depois fecha
-
-### 5.5 Features.h — flags de sensor + fast-forward + power timeouts
-
-`include/Features.h`, namespace `pobc`:
-
-```cpp
-constexpr bool USE_REAL_INJECTOR     = false; // GPIO 34
-constexpr bool USE_REAL_VSS          = false; // GPIO 36
-constexpr bool USE_REAL_VOLTAGE      = false; // GPIO 32
-constexpr bool USE_REAL_FUEL_LEVEL   = false; // GPIO 33 (boia)
-constexpr bool USE_REAL_TEMP_SENSORS = false; // DS18B20 (pino a alocar — ver §4.2)
-constexpr bool USE_REAL_GPS          = false; // Serial1 (RX 39 / TX 15)
-constexpr bool USE_REAL_IGNITION     = false; // GPIO 13 (digital active-low)
-constexpr bool USE_REAL_FAROL        = true;  // GPIO 35 (digital active-low, sem sim)
-constexpr bool ANY_SIMULATED = /* OR dos 5 sims negados */; // gate do BENCH_TIME_SCALE
-constexpr float BENCH_TIME_SCALE     = 60.0f; // 1 real sec = 1 sim min
-
-constexpr uint8_t  BACKLIGHT_LEVEL_NIGHT =  20;   // bancada (conservador)
-constexpr uint8_t  BACKLIGHT_LEVEL_DAY   =  85;   // bancada (conservador; produção → 255)
-constexpr uint8_t  BACKLIGHT_LEVEL_OFF   =   0;
-constexpr bool     BACKLIGHT_ACTIVE_LOW  = false; // placa atual: active-high
-
-constexpr uint32_t POST_TRIP_SUMMARY_MS                = 60UL * 1000UL;        // 60 s
-constexpr uint32_t GRACE_PERIOD_MS                     = 60UL * 60UL * 1000UL; // 1 h
-constexpr uint32_t BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE = 10UL * 1000UL;        // 10 s na bancada
-constexpr uint32_t BENCH_GRACE_MS_OVERRIDE             = 30UL * 1000UL;        // 30 s na bancada
-```
-
-Telemetry usa `if constexpr` nessas flags. Branches mortos somem do binário em compile time — zero custo de runtime.
-
-Quando os cinco flags de simulação (`INJECTOR`, `VSS`, `VOLTAGE`, `FUEL_LEVEL`, `TEMP_SENSORS`) forem todos true, `ANY_SIMULATED` vira false e `BENCH_TIME_SCALE` colapsa pra 1.0 (a sim para). `GPS`, `IGNITION` e `FAROL` **não** entram nessa conta — só os cinco sims integráveis. Hoje na bancada os cinco estão false, então o sim corre 60x acelerado pra animar o medidor de tanque em minutos em vez de horas. Os dois overrides `BENCH_POST_TRIP_SUMMARY_MS_OVERRIDE` e `BENCH_GRACE_MS_OVERRIDE` colapsam pros valores reais (`POST_TRIP_SUMMARY_MS` / `GRACE_PERIOD_MS`) quando `USE_REAL_IGNITION` é true — produção sempre usa 60s + 1h.
-
-### 5.6 Layout.h — rails compartilhados
-
-`include/Layout.h`, namespace `pobc`:
-
-- `TOP_LABEL_Y`, `FOOTER_DIV`, `FOOTER_Y` — posições do título superior e do divisor/texto do footer (usados por todas as telas com esse padrão)
-- `LEFT_W`, `DIV_X`, `DIV_W`, `RIGHT_X`, `DIV_Y_TOP` — split de duas colunas (Consumption, Autonomy)
-- `SystemScreen` usa layout 50/50 próprio, não puxa daqui
-
-Telas declaram `using namespace pobc;` e aplicam direto. Ajuste global = uma constante em Layout.h.
-
-### 5.7 Persistência — NVS via Preferences
-
-`TripLog` (`include/TripLog.h`):
-- Buffer FIFO de `TRIP_LOG_MAX = 12` registros
-- `TripRecord` = 28 bytes (validado por `static_assert`)
-- Persistido como blob único na namespace `triplog` do NVS
-- Escrita em `tripLogFinishCurrentTrip()` — gatilhos: encerramento manual via Hold-R em Consumption, OU automático após 1h de chave desligada (PowerState GRACE expirado)
-- **Stash slot** (`KEY_STASH`): snapshot da viagem em curso, escrito por `tripLogStashInProgress()` na transição POST_TRIP_SUMMARY → GRACE. Brownout durante GRACE não perde a viagem — `tripLogConsumeStashOrFinalize()` no boot frio decide entre restaurar (se < `GRACE_PERIOD_MS` desde o stash, via `time(nullptr)`/DS3231) ou finalizar no log
-- Recovery: blob corrompido ou parcial no boot → log começa zerado
-
-NVS é a escolha pra estado persistente do projeto. SD card e exportação foram explicitamente removidos do escopo.
-
-### 5.8 PowerState — state machine de ignição
-
-`include/PowerState.h` + `src/PowerState.cpp`. Sempre ativo no `loop()` antes de qualquer outra coisa.
-
-Estados: `ACTIVE`, `POST_TRIP_SUMMARY`, `GRACE`, `DEEP_SLEEP_PENDING`. Transições:
-
-- **ACTIVE → POST_TRIP_SUMMARY:** GPIO 13 vai pra HIGH (ignição off). `telemetryTick()` para de ser chamado — engine off não deve avançar integradores.
-- **POST_TRIP_SUMMARY → ACTIVE:** GPIO 13 volta pra LOW dentro de 60s. Viagem **continua intacta**, sem stash, sem reset.
-- **POST_TRIP_SUMMARY → GRACE:** 60s expirados ou tap em qualquer botão. Stash da viagem em NVS, `telemetryPause()`, blank no display, `esp_light_sleep_start()`.
-- **GRACE → ACTIVE:** wake do light sleep (ext0 GPIO 13 LOW ou timer 250ms periódico) e ignição estável LOW. Limpa stash, retoma a viagem.
-- **GRACE → DEEP_SLEEP_PENDING:** 1h esgotada (`GRACE_PERIOD_MS` em produção, `BENCH_GRACE_MS_OVERRIDE` na bancada). Limpa stash, `tripLogFinishCurrentTrip()` (fica no histórico), próximo loop chama `esp_deep_sleep_start()` com `rtc_gpio_pullup_en` + ext0.
-- **(boot) → ACTIVE / DEEP_SLEEP_PENDING:** `powerInit()` lê GPIO 13, decide. Se `ESP_RST_DEEPSLEEP`, pula WiFi/NTP no `setup()` pra wake instantâneo.
-
-Debounce: 50 ms na leitura digital. Sleep deltas no `telemetryTick()` são clampados (>5s = descartado) como rede de segurança independente do `telemetryPause()` explícito.
-
-### 5.9 GpsModule — GPS NEO-8M
+### 5.3 GpsModule — GPS NEO-8M
 
 Extraído por tamanho (regra de manutenção):
 [GpsModule — link state machine e config UBX](docs/gps-module.md) — máquina de
@@ -445,7 +296,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 
 **Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS — a `VEL` da GpsScreen já é a régua pronta pra essa calibração (ver a divisão de papéis em §7.2). Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState (§5.8) — quando o opto for montado, basta `USE_REAL_IGNITION=true`.
 
-**Fase 3 — GPS:** altitude, inclinação, heading e velocidade independente **entregues** (GpsModule + GpsScreen, §5.9), com config UBX automotiva persistida e auto-validada. Pendentes na fase: NTP→GPS pra hora atômica, e reverse geocoding offline pra cidade atual (§7.2).
+**Fase 3 — GPS:** altitude, inclinação, heading e velocidade independente **entregues** (GpsModule + GpsScreen, §5.3), com config UBX automotiva persistida e auto-validada. Pendentes na fase: NTP→GPS pra hora atômica, e reverse geocoding offline pra cidade atual (§7.2).
 
 ### 7.2 Decisões em aberto
 
@@ -455,7 +306,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
   high-side / load switch acionado pela ignição (ou por um GPIO de enable
   dedicado, se valer poder ligar o GPS com a chave desligada). O firmware já
   assume esse mundo: o handshake UBX é lazy e o link cai pra `ABSENT` sem energia
-  (§5.9). Bancada roda no 3.3V permanente até então.
+  (§5.3). Bancada roda no 3.3V permanente até então.
 
 - **VSS vs GPS como fonte de velocidade** — **resolvido**. Não são
   intercambiáveis: o GPS é mais *exato* (Doppler da portadora, ~±0.2-0.4 km/h,
@@ -478,35 +329,13 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 
 ## 8. Engineering references
 
-Seções de referência técnica. Não precisa ler na entrada — consultar quando a decisão tocar nesses tópicos.
+Referências técnicas extraídas por tamanho (regra de manutenção). Não precisa ler
+na entrada — consultar quando a decisão tocar nesses tópicos.
 
-- [GpsModule — link state machine e config UBX](docs/gps-module.md) — máquina de estados do link GPS, verificação da config no próprio receptor, pacote UBX automotivo, derivação de inclinação (referenciado por §5.9)
-
-### 8.1 LT7680 — capacidades e limites da GPU
-
-**Nativo via ER_TFT (lib/LT7680):**
-- `DrawSquare`/`DrawSquare_Fill` — retângulos (outline e preenchido)
-- `DrawCircle_Fill`, `Start_Circle_or_Ellipse` — círculos e elipses
-- `Start_Line` — linhas arbitrárias
-- `Start_Triangle`/`_Fill` — triângulos
-- `Start_Circle_Square` — retângulos com cantos arredondados
-- `DrawPixel` — único, lento via SPI; usar só em casos pontuais
-- BTE (Block Transfer Engine) — copiar/mover regiões da SDRAM com ROP codes e alpha blending; útil pra sprites e composição
-- Múltiplas layers (≥11) de 614400 bytes na SDRAM ~8 MB
-
-**Modos de cor:** 16bpp RGB565 (atual, 65K cores), 24bpp RGB888 (16M, 2× memória), 8bpp indexado.
-
-**Texto via CGROM interna:** 8×16, 12×24, 16×32 ASCII (Latin-1/ISO-8859-1/2/3/4), zoom 1-4x independente em W/H, rotação 0° ou 90° (no modo 90° há H-flip embutido — compensado por `VDIR=1`, mount atual).
-
-**Limitações reais:**
-- Sem rotação nativa de bitmaps (só texto 0°/90°)
-- Sem antialiasing (workaround: supersample + BTE)
-- Sem gradientes nativos (BTE alpha blending ou muitos rects)
-- SPI a 8 MHz — ~3 µs por registrador, limita ops granulares (mas fill/BTE rodam na GPU sem overhead de pixel)
-
-**Disponível pra adicionar:**
-- Chip de flash SPI externo (W25Q64) nos pinos SFI do LT7680 — fontes TrueType pré-rasterizadas, sprites grandes
-- Bitmap font em software — sem hardware extra
+- [Mapa de pinos ESP32](docs/pinout.md) — tabelas de conectados / reservados / livres, e as notas de design de reuso de pino
+- [Arquitetura — padrões e módulos](docs/architecture.md) — Telemetry, padrão Screen, input pipeline, Features.h, Layout.h, persistência NVS, PowerState
+- [GpsModule — link state machine e config UBX](docs/gps-module.md) — máquina de estados do link GPS, verificação da config no próprio receptor, pacote UBX automotivo, derivação de inclinação
+- [LT7680 — capacidades e limites da GPU](docs/lt7680-gpu.md) — primitivas GPU disponíveis, modos de cor, fontes, limitações reais
 
 ---
 
@@ -518,7 +347,8 @@ Seções de referência técnica. Não precisa ler na entrada — consultar quan
 src/        — código-fonte (.cpp)
 include/    — headers (.h)
 lib/        — bibliotecas locais (cada subdir é uma lib)
-test/       — testes unitários (PlatformIO test runner)
+docs/       — referências extraídas do CLAUDE.md (indexadas em §8)
+test/       — testes unitários (PlatformIO test runner) — vazio hoje
 platformio.ini  — config (board, deps, flags)
 ```
 
@@ -544,7 +374,7 @@ platformio.ini  — config (board, deps, flags)
 | `HistoryScreen` | gráfico das últimas 12 viagens encerradas |
 | `TripSummaryScreen.{h,cpp}` | resumo da viagem encerrada (visível só durante POST_TRIP_SUMMARY) |
 | `TripLog.{h,cpp}` | persistência NVS do log de viagens + stash slot pra recuperação após brownout em GRACE |
-| `GpsModule.{h,cpp}` | NEO-8M: Serial1, NMEA via TinyGPSPlus, link state machine, config UBX automotiva auto-validada, derivação de inclinação (§5.9) |
+| `GpsModule.{h,cpp}` | NEO-8M: Serial1, NMEA via TinyGPSPlus, link state machine, config UBX automotiva auto-validada, derivação de inclinação (§5.3) |
 | `GpsScreen.{h,cpp}` | altitude + inclinação + velocidade/heading + qualidade do fix e estado do link |
 | `lib/LT7680/` | driver vendor do controller LT7680 |
 | `include/config.h` | credenciais WiFi (gitignored) |

@@ -1,6 +1,6 @@
 # GpsModule — link state machine e configuração UBX auto-validada
 
-Referência do módulo de GPS do P-OBC. Indexado a partir de `CLAUDE.md` §5.9.
+Referência do módulo de GPS do P-OBC. Indexado a partir de `CLAUDE.md` §5.3.
 Arquivos: `include/GpsModule.h`, `src/GpsModule.cpp`, `include/GpsScreen.h`,
 `src/GpsScreen.cpp`.
 
