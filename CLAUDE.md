@@ -158,44 +158,26 @@ devem ser evitados. Ou seja: periférico novo daqui pra frente entra por
 
 ### 5.1 Mapa de módulos
 
+**Diagrama completo:** [Arquitetura — padrões e módulos](docs/architecture.md) —
+o mapa ASCII inteiro, com o corpo de cada branch do `loop()` e todas as setas.
+
+O que precisa estar na cabeça sem abrir o doc é a **direção das dependências**:
+
 ```
-main.cpp
-  ├─ powerTick()            ← state machine de ignição, primeira coisa do loop
-  ├─ switch (powerCurrent()):
-  │     ACTIVE              → telemetryTick + UI normal
-  │     POST_TRIP_SUMMARY   → render TripSummaryScreen, sem telemetryTick
-  │     GRACE               → blank + esp_light_sleep_start()
-  │     DEEP_SLEEP_PENDING  → blank + esp_deep_sleep_start()
-  ├─ buttonsPoll() → ev     ← input do usuário (só ACTIVE/POST_TRIP_SUMMARY)
-  └─ SCREENS[g_screen].draw()
-
-PowerState ──reads──> GPIO 13 (ignição, ext0 wake) ──> Features (timeouts)
-   │
-   └─ chama tripLogStashInProgress / tripLogFinishCurrentTrip
-
-Telemetry  ──reads──>  Features (flags + BENCH_TIME_SCALE)
-   ▲
-   │ getters (read-only)
-   │
-   ├─ ConsumptionScreen
-   ├─ AutonomyScreen
-   ├─ SystemScreen
-   ├─ HistoryScreen ──reads──> TripLog (NVS persistence + stash slot)
-   └─ TripSummaryScreen (só durante POST_TRIP_SUMMARY)
-
-GpsModule ──reads/writes──> Serial1 (GPIO 39 RX / 15 TX)
-   │   NMEA via TinyGPSPlus + handshake UBX auto-validado (§5.3)
-   └─ GpsScreen (getters read-only)
-      Nenhum outro módulo consome GPS: Telemetry segue independente.
-
-Buttons → main → ResetScreen (modal contextual)
-                    │
-                    └─ chama ResetSet.opts[i].fn (vem de cada Screen)
-
-Layout.h  ──shared──>  Consumption, Autonomy, History, Gps
-Tft + BitmapFont + Fonts → todos os Screens
+PowerState  →  Telemetry, TripLog          state machine manda no resto
+Telemetry   →  Screens                     getters, sentido único
+GpsModule   →  GpsScreen, GpsDebugScreen   idem, e isolado da Telemetry
+Buttons     →  main → ResetScreen          roteamento de input
+Layout.h, Tft, BitmapFont, Fonts → Screens
 LT7680 (lib/) → Tft
 ```
+
+**As setas nunca invertem.** Tela não escreve em Telemetry; Telemetry não conhece
+tela nem GPS; GpsModule não conhece Telemetry (§7.2). Quem quebra isso está
+começando a criar o acoplamento que o padrão existe pra evitar.
+
+Ordem no `loop()`: `powerTick()` → `applyBacklightPolicy()` → (só em ACTIVE)
+`telemetryTick()` → `gpsTick()` → input → render → `flipBuffers()` → `tftTick()`.
 
 ### 5.2 Padrões — Telemetry, Screen, input, layout, persistência, power
 
@@ -347,7 +329,7 @@ Referências técnicas extraídas por tamanho (regra de manutenção). Não prec
 na entrada — consultar quando a decisão tocar nesses tópicos.
 
 - [Mapa de pinos ESP32](docs/pinout.md) — tabelas de conectados / reservados / livres, e as notas de design de reuso de pino
-- [Arquitetura — padrões e módulos](docs/architecture.md) — Telemetry, padrão Screen, input pipeline, Features.h, Layout.h, persistência NVS, PowerState
+- [Arquitetura — padrões e módulos](docs/architecture.md) — mapa de módulos completo, Telemetry, padrão Screen, input pipeline, Features.h, Layout.h, persistência NVS, PowerState
 - [GpsModule — link state machine e config UBX](docs/gps-module.md) — máquina de estados do link GPS, verificação da config no próprio receptor, pacote UBX automotivo, derivação de inclinação
 - [LT7680 — capacidades e limites da GPU](docs/lt7680-gpu.md) — primitivas GPU disponíveis, modos de cor, fontes, limitações reais
 

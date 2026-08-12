@@ -1,8 +1,52 @@
 # Arquitetura — padrões e módulos
 
-Extraído de `CLAUDE.md` §5.2–5.8. As **regras** curtas ficam no CLAUDE.md; aqui
-está o detalhe de cada padrão. O mapa de módulos (§5.1) e o GpsModule
-([docs/gps-module.md](gps-module.md)) vivem separados.
+Extraído de `CLAUDE.md` §5.1–5.2. As **regras** curtas ficam no CLAUDE.md; aqui
+está o mapa completo e o detalhe de cada padrão. O GpsModule tem doc próprio:
+[docs/gps-module.md](gps-module.md).
+
+## Mapa de módulos
+
+```
+main.cpp
+  ├─ powerTick()            ← state machine de ignição, primeira coisa do loop
+  ├─ applyBacklightPolicy() ← nível PWM por power state + farol
+  ├─ switch (powerCurrent()):
+  │     ACTIVE              → telemetryTick + gpsTick + UI normal
+  │     POST_TRIP_SUMMARY   → render TripSummaryScreen, sem telemetryTick
+  │     GRACE               → telemetryPause + gpsPause + blank + light sleep
+  │     DEEP_SLEEP_PENDING  → blank + esp_deep_sleep_start()
+  ├─ pollDebugUnlock()      ← combo R+S revela/oculta telas de debug
+  ├─ buttonsPoll() → ev     ← input do usuário (só ACTIVE/POST_TRIP_SUMMARY)
+  └─ SCREENS[g_screen].draw()   ← anel dimensionado por ringSize()
+
+PowerState ──reads──> GPIO 13 (ignição, ext0 wake) ──> Features (timeouts)
+   │
+   └─ chama tripLogStashInProgress / tripLogFinishCurrentTrip
+
+Telemetry  ──reads──>  Features (flags + BENCH_TIME_SCALE)
+   ▲
+   │ getters (read-only)
+   │
+   ├─ ConsumptionScreen
+   ├─ AutonomyScreen
+   ├─ SystemScreen
+   ├─ HistoryScreen ──reads──> TripLog (NVS persistence + stash slot)
+   └─ TripSummaryScreen (só durante POST_TRIP_SUMMARY)
+
+GpsModule ──reads/writes──> Serial1 (GPIO 39 RX / 15 TX)
+   │   NMEA via TinyGPSPlus + handshake UBX auto-validado (gps-module.md)
+   ├─ GpsScreen      (getters read-only)
+   └─ GpsDebugScreen (getters read-only, atrás de POBC_DEBUG_MODE)
+      Nenhum outro módulo consome GPS: Telemetry segue independente.
+
+Buttons → main → ResetScreen (modal contextual)
+                    │
+                    └─ chama ResetSet.opts[i].fn (vem de cada Screen)
+
+Layout.h  ──shared──>  Consumption, Autonomy, History, Gps, GpsDebug
+Tft + BitmapFont + Fonts → todos os Screens
+LT7680 (lib/) → Tft
+```
 
 ## Telemetry — single source of truth
 
