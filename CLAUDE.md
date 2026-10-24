@@ -63,7 +63,7 @@ Arquivos extraídos mantêm o mesmo padrão (markdown, headers nomeados, refs ao
 
 ## 2. Developer Context
 
-Senior .NET dev (~15 anos de programação, ~5 profissionais), iniciante em sistemas embarcados. Experiência prévia com game dev — modelo mental de game loop, fixed timestep, frame budget se aplica direto ao loop do Arduino.
+Senior .NET dev (~15 anos de programação, ~5 profissionais), iniciante em firmware embarcado, mas **técnico em eletrônica** — confere os circuitos; entregar valores e limites, sem explicar eletrônica analógica básica. Experiência prévia com game dev — modelo mental de game loop, fixed timestep, frame budget se aplica direto ao loop do Arduino.
 
 **Stance do projeto: "beat the OEMs, don't match them"** — o P-OBC é peça de afirmação, não clone. Quando uma decisão for "match factory" vs "exceed factory", ir além é o default. Pesquisar comportamento OEM serve pra estabelecer **piso**, não teto.
 
@@ -151,6 +151,17 @@ devem ser evitados. Ou seja: periférico novo daqui pra frente entra por
 - **VSS painel** → velocidade via k-factor calibrado por GPS → GPIO 36
 - **Divisor resistivo 12-14.4V** → ADC ESP32 → GPIO 32 (voltímetro)
 - **12V chaveado pela chave de ignição** → opto PC817 (LED) → coletor opto → GPIO 13 (active-low, sinal digital de ignição)
+
+Circuito de interface de cada sinal, pinagem do chicote do TID e lista de compras:
+[Instalação no carro](docs/instalacao-carro.md). Regras curtas:
+
+- **O chicote do TID original é reaproveitado** (o P-OBC ocupa o lugar dele): traz
+  Kl.30, Kl.15, massa, iluminação dimerizada, o NTC de temperatura externa e
+  provavelmente o VSS (pino 9, SDV). Só injeção e boia precisam de fio novo.
+  Pinagem veio de fonte europeia do Astra G — **não confirmada no carro**.
+- **Linha de alimentação 12 V** (ignição, iluminação) entra por opto PC817;
+  **sinal** (injeção, VSS) entra por buffer BC547 de alta impedância — nunca
+  divisor direto, porque o pior caso (fio cru de injetor) tem picos de ~70 V.
 
 ---
 
@@ -302,7 +313,10 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
   high-side / load switch acionado pela ignição (ou por um GPIO de enable
   dedicado, se valer poder ligar o GPS com a chave desligada). O firmware já
   assume esse mundo: o handshake UBX é lazy e o link cai pra `ABSENT` sem energia
-  (§5.3). Bancada roda no 3.3V permanente até então.
+  (§5.3). Bancada roda no 3.3V permanente até então. **Caminho proposto** (a
+  confirmar na montagem): 7805 alimentado pelo próprio 12 V da ignição, sem
+  MOSFET, mais 1k em série no TX (GPIO 15) — ver
+  [Instalação no carro](docs/instalacao-carro.md) §3.4.
 
 - **VSS vs GPS como fonte de velocidade** — **resolvido**. Não são
   intercambiáveis: o GPS é mais *exato* (Doppler da portadora, ~±0.2-0.4 km/h,
@@ -320,6 +334,10 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 - **Desligar o display em GRACE / DEEP_SLEEP** — resolvido (lógica). `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. **Pendência de hardware:** o PWM hoje chega só ao LED onboard — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high, então `BACKLIGHT_ACTIVE_LOW=false`; `tftBacklight()` inverte internamente se um breakout futuro for active-low — basta flipar a flag.
 - **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Como o ESP32 é always-on, não é "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 - **Cidade atual via GPS (reverse geocoding offline)** — pendente. GPS dá só lat/lon; nome de cidade exige tabela embarcada. Motivação: animar a viagem mostrando "cruzando Mossoró", "entrando em Natal" — nenhum TID/MID factory faz isso, encaixa direto no espírito "beat the OEMs". Caminhos: (a) lista IBGE de ~5570 municípios como (nome, lat_centro, lon_centro) + nearest-neighbor — cabe em poucas centenas de KB na flash interna, precisão suficiente pra cidade-resolução; (b) polígonos GeoJSON dos municípios + point-in-polygon — preciso na divisa, mas provavelmente exige flash SPI externo (W25Q64 já previsto em §8.1); (c) online via Nominatim/Google só em WiFi — descartado, carro não tem WiFi em movimento. Default natural é (a) com fallback "fora de área" quando o município mais próximo passar de um raio sane (ex. >50 km). Decidir formato da tabela (PROGMEM array, blob em SPIFFS/LittleFS) e onde a info aparece na UI (footer da SystemScreen? tela própria de viagem?) quando entrar na Fase 3.
+- **Temperatura externa: NTC original vs DS18B20** — pendente. O NTC do para-choque
+  já chega pelo chicote do TID (sem cabo novo), mas é analógico e o ADC1 não tem
+  pino livre → exige ADS1115 no I²C, que também resolve voltímetro/boia e a errata
+  dos GPIOs 36/39. Decidir depois de medir o chicote ([instalação](docs/instalacao-carro.md) §1).
 
 ---
 
@@ -332,6 +350,7 @@ na entrada — consultar quando a decisão tocar nesses tópicos.
 - [Arquitetura — padrões e módulos](docs/architecture.md) — mapa de módulos completo, Telemetry, padrão Screen, input pipeline, Features.h, Layout.h, persistência NVS, PowerState
 - [GpsModule — link state machine e config UBX](docs/gps-module.md) — máquina de estados do link GPS, verificação da config no próprio receptor, pacote UBX automotivo, derivação de inclinação
 - [LT7680 — capacidades e limites da GPU](docs/lt7680-gpu.md) — primitivas GPU disponíveis, modos de cor, fontes, limitações reais
+- [Instalação no carro](docs/instalacao-carro.md) — pinagem do chicote do TID, lista de compras, circuitos de interface por sinal (opto, buffer, divisor, trilho do GPS), pegadinhas de instalação
 
 ---
 

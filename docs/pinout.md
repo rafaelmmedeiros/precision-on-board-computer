@@ -25,7 +25,7 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 | Botão R | 25 | Pull-up interno, chave pra GND |
 | Botão S | 26 | Pull-up interno, chave pra GND |
 | GPS RX (Serial1) | 39 (VN) | GPS TX → ESP32. Input-only, sem pull interno — o GPS aciona a linha push-pull em 3.3V, então não precisa resistor. |
-| GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.3). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. |
+| GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.3). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. No carro, **1k em série**: com o GPS no trilho comutado e sem energia, o TX em HIGH alimentaria o módulo pelo diodo de proteção. |
 
 #### Reservados (pinos comprometidos, hardware ainda não montado)
 
@@ -33,10 +33,12 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 |--------|------|-------|
 | I²C SDA (DS3231) | 21 | Padrão Wire — DS3231 ainda não soldado |
 | I²C SCL (DS3231) | 22 | Padrão Wire |
-| Voltímetro | 32 | ADC1, divisor 14.4V→3.3V. Mede bateria/alternador. |
-| Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi) |
-| Injeção (bicos) ECU | 34 | Input-only, interrupt, divisor 5V→3.3V |
-| VSS (velocidade) | 36 (VP) | Input-only, interrupt, divisor |
+| Voltímetro | 32 | ADC1, divisor 1M/180k (16V→2.44V). Mede bateria/alternador. |
+| Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi). Divisor 1M/R2, R2 conforme a tensão medida no fio. |
+| Injeção (bicos) ECU | 34 | Input-only, interrupt. Buffer BC547 de alta impedância — provavelmente a saída de consumo da ECU, mas se for fio cru de injetor tem 12 V com picos de ~70 V; divisor direto não serve. GPIO HIGH = bico aberto (no caso do injetor cru; polaridade da saída de consumo a confirmar). |
+| VSS (velocidade) | 36 (VP) | Input-only, interrupt. Mesmo buffer BC547 da injeção. **Errata GPIO-3.11:** glitches de ~80 ns quando o ADC liga (ver instalacao-carro.md §4.2). |
+
+Circuitos de interface completos: [Instalação no carro](instalacao-carro.md) §3.
 
 #### Sem pino atribuído (a alocar quando hardware chegar)
 
