@@ -110,40 +110,40 @@ sobra pra erro de solda.
 
 ### 2.1 Interface de sinais
 
-| Tem? | Item | Qtd | Usado em |
-|---|---|---|---|
-| [ ] | Optoacoplador **PC817** (DIP-4) | 5 | Ignição, farol (circuito A) |
-| [ ] | Transistor **BC547** (TO-92) | 10 | Injeção, VSS (circuito B), buzzer |
-| [ ] | Diodo **1N4148** | 20 | Proteção de reverso em todos os circuitos |
-| [ ] | **Kit de resistores filme metálico 1%**, 1/4 W, sortido E24 (10 Ω–1 MΩ) | 1 kit | Tudo. Valores usados: 1k, 2k2, 10k, 22k, 100k, 180k, 1M |
-| [ ] | Capacitor cerâmico **100 nF** | 20 | Filtro nos GPIOs, desacoplamento |
-| [ ] | Capacitor cerâmico **330 nF** | 2 | Entrada do 7805 |
-| [ ] | Capacitor eletrolítico **10 µF / 25 V** | 5 | Saída do 7805 |
-| [ ] | Regulador **L7805CV** (TO-220) | 2 | Trilho comutado do GPS (§3.4) |
+| Tem? | Item | Qtd | Usado em | Link |
+|---|---|---|---|---|
+| [ ] | Optoacoplador **PC817** (DIP-4) | 5 | Ignição, farol (circuito A) |  |
+| [ ] | Transistor **BC547** (TO-92) | 10 | Injeção, VSS (circuito B), buzzer |  |
+| [ ] | Diodo **1N4148** | 20 | Proteção de reverso em todos os circuitos |  |
+| [ ] | **Kit de resistores filme metálico 1%**, 1/4 W, sortido E24 (10 Ω–1 MΩ) | 1 kit | Tudo. Valores usados: 1k, 2k2, 10k, 22k, 100k, 180k, 1M |  |
+| [ ] | Capacitor cerâmico **100 nF** | 20 | Filtro nos GPIOs, desacoplamento |  |
+| [ ] | Capacitor cerâmico **330 nF** | 2 | Entrada do 7805 |  |
+| [ ] | Capacitor eletrolítico **10 µF / 25 V** | 5 | Saída do 7805 |  |
+| [ ] | Regulador **L7805CV** (TO-220) | 2 | Trilho comutado do GPS (§3.4) |  |
 
 ### 2.2 Sensores e periféricos
 
-| Tem? | Item | Qtd | Notas |
-|---|---|---|---|
-| [ ] | **DS18B20 sonda à prova d'água** (inox, cabo 1-3 m) | 1 | Temp. externa — **só se não reaproveitar o NTC original** (§1.2). Atrás do para-choque/grade, longe do radiador |
-| [ ] | **DS18B20** (sonda ou TO-92) | 1 | Temp. interna |
-| [ ] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |
-| [ ] | **Buzzer passivo 5 V** (magnético, 12 mm) | 1 | GPIO 27 via BC547 |
-| [ ] | **Botão pulsador NA**, painel, 12-16 mm, metálico | 2 | R e S |
-| [ ] | Antena GPS ativa com base magnética, **cabo ≥ 3 m** | 1 | Só se a atual não alcança o ponto de instalação (painel/vidro traseiro) |
-| [ ] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 1 | Reserva — se o único queimar no carro, o projeto para |
+| Tem? | Item | Qtd | Notas | Link |
+|---|---|---|---|---|
+| [ ] | **DS18B20 sonda à prova d'água** (inox, cabo 1-3 m) | 1 | Temp. externa — **só se não reaproveitar o NTC original** (§1.2). Atrás do para-choque/grade, longe do radiador |  |
+| [ ] | **DS18B20** (sonda ou TO-92) | 1 | Temp. interna |  |
+| [ ] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |  |
+| [ ] | **Buzzer passivo 5 V** (magnético, 12 mm) | 1 | GPIO 27 via BC547 |  |
+| [ ] | **Botão pulsador NA**, painel, 12-16 mm, metálico | 2 | R e S |  |
+| [ ] | Antena GPS ativa com base magnética, **cabo ≥ 3 m** | 1 | Só se a atual não alcança o ponto de instalação (painel/vidro traseiro) |  |
+| [ ] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 1 | Reserva — se o único queimar no carro, o projeto para |  |
 
 ### 2.3 Fonte
 
 O projeto da fonte é seu (§4.1) — aqui é só a lista pra não esquecer nada no pedido.
 
-| Tem? | Item | Qtd | Notas |
-|---|---|---|---|
-| [ ] | Porta-fusível inline + fusível de lâmina **1 A** | 1 + 5 | No Kl.30 que vem do conector do TID, do lado do P-OBC |
-| [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |
-| [ ] | Módulo buck **5 V** | 1 | ESP32 (VIN) |
-| [ ] | Módulo buck **3,3 V** | 1 | Display |
-| [ ] | Proteção de entrada (reverso + TVS + eletrolítico de entrada) | — | Conforme seu projeto |
+| Tem? | Item | Qtd | Notas | Link |
+|---|---|---|---|---|
+| [ ] | Porta-fusível inline + fusível de lâmina **1 A** | 1 + 5 | No Kl.30 que vem do conector do TID, do lado do P-OBC |  |
+| [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |  |
+| [ ] | Módulo buck **5 V** | 1 | ESP32 (VIN) |  |
+| [ ] | Módulo buck **3,3 V** | 1 | Display |  |
+| [ ] | Proteção de entrada (reverso + TVS + eletrolítico de entrada) | — | Conforme seu projeto |  |
 
 Ponto concreto pra escolha do módulo buck: os LM2596 comuns gastam ~5-10 mA
 parados (LED de power + chaveamento), e a DevKit mais alguns mA (AMS1117 + chip
@@ -152,33 +152,33 @@ está longe dos ~10 µA da §4.1. Desoldar o LED do módulo já ajuda.
 
 ### 2.4 Montagem e chicote
 
-| Tem? | Item | Qtd | Notas |
-|---|---|---|---|
-| [ ] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |
-| [ ] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |
-| [ ] | Borne KF301 (parafuso) 2 e 3 vias | 10 | Entrada dos fios do carro |
-| [ ] | **TID usado ou queimado** (ferro-velho, Mercado Livre) | 1 | Fonte do conector que encaixa no chicote original — adaptador sem cortar fio (§1.2) |
-| [ ] | **Conector automotivo à prova d'água 8 vias** (macho+fêmea) | 1 | Chicote → P-OBC, pra poder tirar a unidade |
-| [ ] | Conector 4 vias (botões) e 3 vias (sonda externa, se houver) | 1 cada | |
-| [ ] | **Cabo blindado 2 vias** (sinal + GND) | 5 m | Injeção (e VSS, se o pino 9 do TID não servir) — malha no GND **só do lado do P-OBC** |
-| [ ] | Cabo automotivo 0,5 mm² (ou 22 AWG silicone), 4+ cores | 5 m cada | Adaptador do TID até a placa, boia |
-| [ ] | Terminal olhal | 5 | GND no chassi |
-| [ ] | Termo-retrátil sortido | 1 kit | |
-| [ ] | Caixa plástica (patola) pra eletrônica | 1 | |
+| Tem? | Item | Qtd | Notas | Link |
+|---|---|---|---|---|
+| [ ] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |  |
+| [ ] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |  |
+| [ ] | Borne KF301 (parafuso) 2 e 3 vias | 10 | Entrada dos fios do carro |  |
+| [ ] | **TID usado ou queimado** (ferro-velho, Mercado Livre) | 1 | Fonte do conector que encaixa no chicote original — adaptador sem cortar fio (§1.2) |  |
+| [ ] | **Conector automotivo à prova d'água 8 vias** (macho+fêmea) | 1 | Chicote → P-OBC, pra poder tirar a unidade |  |
+| [ ] | Conector 4 vias (botões) e 3 vias (sonda externa, se houver) | 1 cada | |  |
+| [ ] | **Cabo blindado 2 vias** (sinal + GND) | 5 m | Injeção (e VSS, se o pino 9 do TID não servir) — malha no GND **só do lado do P-OBC** |  |
+| [ ] | Cabo automotivo 0,5 mm² (ou 22 AWG silicone), 4+ cores | 5 m cada | Adaptador do TID até a placa, boia |  |
+| [ ] | Terminal olhal | 5 | GND no chassi |  |
+| [ ] | Termo-retrátil sortido | 1 kit | |  |
+| [ ] | Caixa plástica (patola) pra eletrônica | 1 | |  |
 
 ### 2.5 Ferramentas (se ainda não tem)
 
-| Tem? | Item | Por quê |
-|---|---|---|
-| [ ] | Multímetro **com escala de Hz** | Medir VSS rodando devagar sem osciloscópio |
-| [ ] | Analisador lógico USB 24 MHz 8 canais (clone Saleae) | Ver os pulsos de injeção/VSS **depois** do circuito, no lado 3,3 V. Barato e decisivo pra Fase 2 |
-| [ ] | Osciloscópio de bolso (opcional) | Ver o sinal cru de 12 V antes de ligar |
+| Tem? | Item | Por quê | Link |
+|---|---|---|---|
+| [ ] | Multímetro **com escala de Hz** | Medir VSS rodando devagar sem osciloscópio |  |
+| [ ] | Analisador lógico USB 24 MHz 8 canais (clone Saleae) | Ver os pulsos de injeção/VSS **depois** do circuito, no lado 3,3 V. Barato e decisivo pra Fase 2 |  |
+| [ ] | Osciloscópio de bolso (opcional) | Ver o sinal cru de 12 V antes de ligar |  |
 
 ### 2.6 ADC externo — necessário se reaproveitar o NTC original
 
-| Tem? | Item | Qtd | Por quê |
-|---|---|---|---|
-| [ ] | Módulo **ADS1115** (I²C, 16 bits, 4 canais) | 2 | Um de reserva. ADC do ESP32 é ruidoso e não-linear; o ADS1115 entra no barramento I²C (21/22) que já existe, libera os GPIOs 32/33 e elimina a errata do §4.2. Voltímetro preciso também é o que viabiliza compensar o tempo morto do injetor pela tensão — algo que computador de bordo de fábrica não faz |
+| Tem? | Item | Qtd | Por quê | Link |
+|---|---|---|---|---|
+| [ ] | Módulo **ADS1115** (I²C, 16 bits, 4 canais) | 2 | Um de reserva. ADC do ESP32 é ruidoso e não-linear; o ADS1115 entra no barramento I²C (21/22) que já existe, libera os GPIOs 32/33 e elimina a errata do §4.2. Voltímetro preciso também é o que viabiliza compensar o tempo morto do injetor pela tensão — algo que computador de bordo de fábrica não faz |  |
 
 Alocação natural dos 4 canais: **A0** voltímetro · **A1** boia · **A2** NTC externo
 (§1.2) · **A3** nível do dimmer (pino 4 do TID, com RC se for PWM). Os divisores do
