@@ -22,8 +22,8 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 | Dimmer backlight (BL_CONTROL) | 2 | LEDC PWM 5kHz 8-bit. API `tftBacklight(0..255)`. Placa atual é active-high (`BACKLIGHT_ACTIVE_LOW=false`). Hoje o PWM só chega ao LED onboard — alcança o BL_CONTROL do LT7680 após cortar o hard-tie de 3.3V. |
 | Sinal de ignição | 13 | Digital active-low. `INPUT_PULLUP` interno + chave/opto pra GND. RTC-capable → `ext0` wake source. Bench: chave protoboard. Produção: PC817. |
 | Farol aceso | 35 | Input-only, **sem pull interno** — exige resistor externo 10k pra 3.3V. Active-low. Lido por `telemetryHeadlightOn()`. |
-| Botão R | 25 | Pull-up interno, chave pra GND |
-| Botão S | 26 | Pull-up interno, chave pra GND |
+| Botão R | 25 | Pull-up interno, chave pra GND. No carro: botão da alavanca do limpador (contatos a medir, instalacao-carro.md §1.3) |
+| Botão S | 26 | Pull-up interno, chave pra GND. Idem |
 | GPS RX (Serial1) | 39 (VN) | GPS TX → ESP32. Input-only, sem pull interno — o GPS aciona a linha push-pull em 3.3V, então não precisa resistor. |
 | GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.3). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. No carro, **1k em série**: com o GPS no trilho comutado e sem energia, o TX em HIGH alimentaria o módulo pelo diodo de proteção. |
 
@@ -44,14 +44,14 @@ Circuitos de interface completos: [Instalação no carro](instalacao-carro.md) �
 
 | Função | Status | Caminhos |
 |---|---|---|
-| Buzzer | Sem alocação | GPIO 27 era a intenção original — ainda livre se nada brigar até lá. |
+| HOLD da auto-retenção | Contingência (`CLAUDE.md` §7.2) | GPIO 27. Precisa ser pino nativo — num expansor I²C a saída fica travada se o ESP32 travar e o fail-safe some (instalacao-carro.md §3.5). |
 | DS18B20 ×2 (interno + externo, OneWire) | Sem alocação | Opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
 
 #### Truly livres no ESP32
 
 | GPIO | Notas |
 |---|---|
-| 27 | Reservado pra buzzer (intenção original mantida) |
+| 27 | Livre (buzzer saiu do escopo). Candidato ao HOLD da auto-retenção, se ela for adotada. |
 | 12 | Strapping perigoso (define voltagem do flash interno) — **evitar** salvo último recurso. |
 | 0 | Strapping (boot mode) — **evitar**. |
 

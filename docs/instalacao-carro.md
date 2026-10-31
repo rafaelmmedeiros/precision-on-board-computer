@@ -96,6 +96,7 @@ Dois cruzamentos que dão alguma confiança:
 | Fio da boia (no conector do painel de instrumentos) | DC com a ignição ligada | R2 do divisor (§3.3). No Astra F a boia chega no pino 7 do velocímetro, azul-preto — pista, não confirmação |
 | Fios no sensor de velocidade (só se o pino 9 não servir) | Contar | 3 = Hall, circuito B serve. 2 = indutivo, precisa de comparador (LM393) |
 | Tamanho do fusível (só se precisar de derivador) | Olhar | Mini, padrão ou low-profile |
+| Alavanca do limpador com computador de bordo | Continuidade dos botões no conector dela; com ela montada, se o comum vai à massa ou ao 12 V | Quantos botões (a UI de hoje assume 2, R e S); fecha pra massa → GPIO com pull-up externo de 10k + 100 nF; fecha pro 12 V → circuito A; um fio com escada de resistores → canal do ADS1115. Provavelmente precisa de fio novo da coluna até o P-OBC |
 
 Referência achada pra boia do Astra 2.0 8V Flex 2004-2011 (peça DS 2317, aftermarket):
 **~38 Ω cheio, ~283 Ω vazio** ([DS](https://www.ds.ind.br/en/products/fuel-level-sensor/2317)).
@@ -112,10 +113,10 @@ sobra pra erro de solda.
 
 | Tem? | Item | Qtd | Usado em | Link |
 |---|---|---|---|---|
-| [ ] | Optoacoplador **PC817** (DIP-4) | 5 | Ignição, farol (circuito A) |  |
-| [ ] | Transistor **BC547** (TO-92) | 10 | Injeção, VSS (circuito B), buzzer |  |
-| [ ] | Diodo **1N4148** | 20 | Proteção de reverso em todos os circuitos |  |
-| [ ] | **Kit de resistores filme metálico 1%**, 1/4 W, sortido E24 (10 Ω–1 MΩ) | 1 kit | Tudo. Valores usados: 1k, 2k2, 10k, 22k, 100k, 180k, 1M |  |
+| [x] | Optoacoplador **PC817C** (DIP-4) — qualquer rank serve (§3.1); EL817C / LTV-817C são equivalentes | 5 | Ignição, farol (circuito A) |  |
+| [x] | Transistor **BC547C** (TO-92) — qualquer rank serve (§3.2) | 10 | Injeção, VSS (circuito B), auto-retenção (§3.5) |  |
+| [x] | Diodo **1N4148** | 20 | Proteção de reverso em todos os circuitos |  |
+| [x] | **Kit de resistores filme metálico 1%**, 1/4 W, sortido E24 (10 Ω–1 MΩ) | 1 kit | Tudo. Valores usados: 1k, 2k2, 10k, 22k, 100k, 180k, 1M |  |
 | [ ] | Capacitor cerâmico **100 nF** | 20 | Filtro nos GPIOs, desacoplamento |  |
 | [ ] | Capacitor cerâmico **330 nF** | 2 | Entrada do 7805 |  |
 | [ ] | Capacitor eletrolítico **10 µF / 25 V** | 5 | Saída do 7805 |  |
@@ -127,11 +128,10 @@ sobra pra erro de solda.
 |---|---|---|---|---|
 | [ ] | **DS18B20 sonda à prova d'água** (inox, cabo 1-3 m) | 1 | Temp. externa — **só se não reaproveitar o NTC original** (§1.2). Atrás do para-choque/grade, longe do radiador |  |
 | [ ] | **DS18B20** (sonda ou TO-92) | 1 | Temp. interna |  |
-| [ ] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |  |
-| [ ] | **Buzzer passivo 5 V** (magnético, 12 mm) | 1 | GPIO 27 via BC547 |  |
-| [ ] | **Botão pulsador NA**, painel, 12-16 mm, metálico | 2 | R e S |  |
-| [ ] | Antena GPS ativa com base magnética, **cabo ≥ 3 m** | 1 | Só se a atual não alcança o ponto de instalação (painel/vidro traseiro) |  |
-| [ ] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 1 | Reserva — se o único queimar no carro, o projeto para |  |
+| [x] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |  |
+| [x] | **Alavanca do limpador** de Astra com computador de bordo | 1 | Botões do P-OBC, no lugar de pulsadores de painel. Contatos a medir (§1.3) |  |
+| [ ] | Antena GPS **ativa** (SMA, cabo 1-3 m) + pigtail **u.FL → SMA** | 1 + 1 | Plano B se o teste do §4.7 reprovar o patch passivo: o LNA dentro da antena tolera ruído e cabo, e o módulo volta pra placa principal. Antes, conferir ~3 V DC no pino central do u.FL com o módulo ligado — sem essa polarização o módulo não alimenta antena ativa. Barato; pedir junto por causa do prazo |  |
+| [x] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 1 | Reserva — se o único queimar no carro, o projeto para |  |
 
 ### 2.3 Fonte
 
@@ -141,8 +141,8 @@ O projeto da fonte é seu (§4.1) — aqui é só a lista pra não esquecer nada
 |---|---|---|---|---|
 | [ ] | Porta-fusível inline + fusível de lâmina **1 A** | 1 + 5 | No Kl.30 que vem do conector do TID, do lado do P-OBC |  |
 | [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |  |
-| [ ] | Módulo buck **5 V** | 1 | ESP32 (VIN) |  |
-| [ ] | Módulo buck **3,3 V** | 1 | Display |  |
+| [x] | Módulo buck **5 V** | 1 | ESP32 (VIN) |  |
+| [x] | Módulo buck **3,3 V** | 1 | Display |  |
 | [ ] | Proteção de entrada (reverso + TVS + eletrolítico de entrada) | — | Conforme seu projeto |  |
 
 Ponto concreto pra escolha do módulo buck: os LM2596 comuns gastam ~5-10 mA
@@ -154,8 +154,8 @@ está longe dos ~10 µA da §4.1. Desoldar o LED do módulo já ajuda.
 
 | Tem? | Item | Qtd | Notas | Link |
 |---|---|---|---|---|
-| [ ] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |  |
-| [ ] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |  |
+| [x] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |  |
+| [x] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |  |
 | [ ] | Borne KF301 (parafuso) 2 e 3 vias | 10 | Entrada dos fios do carro |  |
 | [ ] | **TID usado ou queimado** (ferro-velho, Mercado Livre) | 1 | Fonte do conector que encaixa no chicote original — adaptador sem cortar fio (§1.2) |  |
 | [ ] | **Conector automotivo à prova d'água 8 vias** (macho+fêmea) | 1 | Chicote → P-OBC, pra poder tirar a unidade |  |
@@ -170,20 +170,43 @@ está longe dos ~10 µA da §4.1. Desoldar o LED do módulo já ajuda.
 
 | Tem? | Item | Por quê | Link |
 |---|---|---|---|
-| [ ] | Multímetro **com escala de Hz** | Medir VSS rodando devagar sem osciloscópio |  |
-| [ ] | Analisador lógico USB 24 MHz 8 canais (clone Saleae) | Ver os pulsos de injeção/VSS **depois** do circuito, no lado 3,3 V. Barato e decisivo pra Fase 2 |  |
-| [ ] | Osciloscópio de bolso (opcional) | Ver o sinal cru de 12 V antes de ligar |  |
+| [x] | Multímetro | Tensões, continuidade, resistência do NTC e da boia |  |
+| [ ] | Analisador lógico USB 24 MHz 8 canais (clone Saleae) | **Opcional** — o osciloscópio já cobre o essencial. Complementa com captura longa (minutos) de injeção + VSS juntos no lado 3,3 V e decodificação da UART do GPS |  |
+| [x] | Osciloscópio | Ver o sinal cru de 12 V antes de ligar (injeção, VSS, dimmer) e frequência do VSS |  |
 
-### 2.6 ADC externo — necessário se reaproveitar o NTC original
+### 2.6 Expansão I²C (21/22) — ADC externo e GPIO extra
 
 | Tem? | Item | Qtd | Por quê | Link |
 |---|---|---|---|---|
-| [ ] | Módulo **ADS1115** (I²C, 16 bits, 4 canais) | 2 | Um de reserva. ADC do ESP32 é ruidoso e não-linear; o ADS1115 entra no barramento I²C (21/22) que já existe, libera os GPIOs 32/33 e elimina a errata do §4.2. Voltímetro preciso também é o que viabiliza compensar o tempo morto do injetor pela tensão — algo que computador de bordo de fábrica não faz |  |
+| [ ] | Módulo **MCP23017** (16 GPIO digitais) | 1 | **Opcional**, sem uso concreto hoje. Saídas push-pull e pino de interrupção — melhor que o PCF8574. Só pra sinal lento (LED, saída liga/desliga, botão extra). **Não serve** pra HOLD (§3.5) nem injeção/VSS (timing de µs) |  |
+| [ ] | Módulo **ADS1115** (I²C, 16 bits, 4 canais) | 2 | **Necessário se reaproveitar o NTC original.** Um de reserva. ADC do ESP32 é ruidoso e não-linear; o ADS1115 entra no barramento I²C (21/22) que já existe, libera os GPIOs 32/33 e elimina a errata do §4.2. Voltímetro preciso também é o que viabiliza compensar o tempo morto do injetor pela tensão — algo que computador de bordo de fábrica não faz |  |
 
 Alocação natural dos 4 canais: **A0** voltímetro · **A1** boia · **A2** NTC externo
 (§1.2) · **A3** nível do dimmer (pino 4 do TID, com RC se for PWM). Os divisores do
 §3.3 continuam iguais, só mudam de destino. O ADS1115 aceita até VDD + 0,3 V na
 entrada — alimentar em 3,3 V e manter o mesmo teto de ~2,4 V dos divisores.
+
+Mapa de endereços do barramento: DS3231 `0x68` · EEPROM AT24C32 do módulo ZS-042
+`0x57` · ADS1115 `0x48` (até `0x4B`) · FRAM `0x50` (até `0x57` — evitar o `0x57`) ·
+MCP23017 `0x20` (até `0x27`). Cada módulo traz pull-ups próprios (4k7-10k) e eles
+ficam em paralelo; acima de ~4 módulos, desoldar os excedentes pra não passar de
+~3 mA no nível baixo. I²C fica dentro da caixa — nunca em cabo até o para-choque.
+
+### 2.7 Contingência — alimentação comutada com auto-retenção
+
+Peças da variante do §3.5, caso o always-on seja abandonado (`CLAUDE.md` §7.2).
+Comprar junto com o resto porque a China demora. BC547C, 1N4148 e resistores já
+estão no §2.1.
+
+| Tem? | Item | Qtd | Por quê | Link |
+|---|---|---|---|---|
+| [ ] | MOSFET canal P **IRF9540N** (TO-220, −100 V / −23 A) | 3 | Chave high-side. −100 V dá folga de load dump; a corrente real é < 0,5 A |  |
+| [ ] | Zener **15 V** (BZX55C15 0,5 W ou 1N4744A 1 W) | 5 | Grampo G-S do MOSFET (V_GS máx ±20 V) |  |
+| [ ] | Módulo FRAM I²C **MB85RC256V** (32 KB) | 2 | **Opcional.** Checkpoint dos integradores a cada segundo, sem desgaste (10¹² escritas) nem tempo de apagamento: perder energia sem aviso (bateria desconectada, fusível) custa ≤ 1 s de viagem. Entra no I²C 21/22 |  |
+
+Plano B que não depende da China: relé 12 V de PCI (SRD-12VDC-SL-C) no lugar do
+MOSFET, com 1N4148 de roda-livre na bobina. O estágio de gatilho é o mesmo; a
+bobina gasta ~30 mA só enquanto ligado.
 
 ---
 
@@ -222,6 +245,10 @@ Lado do ESP32:
 ```
 
 - 2k2: ~6 mA no LED a 14,4 V, ~3,5 mA a 9 V na partida — ainda satura.
+- Rank do CTR: a carga pede só ~0,31 mA (3,3 V / 10k). PC817 sem sufixo garante
+  CTR ≥ 50 % → ~1,75 mA a 3,5 mA de LED; mesmo derrubando ~50 % por temperatura
+  de painel e envelhecimento do LED, sobra ~3×. O **C** (200-400 %) leva a sobra
+  pra ~10× pelo mesmo preço, e é o rank que o mercado mais vende.
 - Saída active-low (12 V presente → GPIO LOW), igual ao que `PowerState` e
   `telemetryHeadlightOn()` já esperam.
 - O 10k externo é **obrigatório** no 35 (sem pull interno) e recomendado no 13
@@ -256,6 +283,10 @@ abre e dá um pico indutivo de **~60-70 V** no fechamento. O VSS pode ser 5 V ou
   consumo, a polaridade é a que o analisador lógico mostrar.
 - Sem consumo com a chave desligada (linha em 0 V → transistor cortado).
 - Pinagem do BC547 varia por fabricante — conferir C-B-E no datasheet do lote.
+- Rank do hFE: a carga pede ~0,31 mA; com 5 V na entrada a base recebe ~14 µA,
+  então até o **A** (hFE ≥ 110, precisa de 2,8 µA) satura com folga de 5×. O **C**
+  (420-800) só desce o limiar de ~3,7 V pra ~3,4 V — a temperatura de painel
+  (−2 mV/°C no V_BE, ×5,5 pelo divisor) mexe mais que isso: ~3 V a 85 °C.
 
 ### 3.3 Circuito C — divisor ADC (voltímetro GPIO 32, boia GPIO 33)
 
@@ -308,19 +339,84 @@ GPS. Dissipa ~0,3 W a 14,4 V/30 mA, não precisa de dissipador.
   então o GPIO 15 fica em HIGH com o GPS sem energia e alimentaria o módulo pelo
   diodo de proteção do pino RX. O resistor limita isso a ~0,3 mA.
 
-### 3.5 Buzzer (GPIO 27)
+### 3.5 Auto-retenção — contingência pro fim do always-on (`CLAUDE.md` §7.2)
+
+A ignição liga o P-OBC; o ESP32 se segura ligado por um GPIO e decide quando
+cortar a própria energia. É o que a ME7.9.9 faz com o relé principal (pós-
+funcionamento pra gravar adaptação e rodar a ventoinha). Desligado, o consumo é o
+vazamento do MOSFET (sub-µA): buck, AMS1117 e chip USB da DevKit ficam sem
+energia, o que o always-on não consegue (§2.3). E o display ganha um power-on
+reset limpo a cada viagem.
 
 ```
- 5 V ──●──────────────┐
-       │              │
-    1N4148         buzzer
- (cátodo no 5 V)   passivo
-       │              │
-       ●──────────────┴──── coletor BC547
+ Kl.30 (pós-fusível) ──●──────●──────── S ┐
+                       │      │           IRF9540N (canal P)
+                     [47k]  zener 15V     D ──── entrada dos bucks
+                       │   (cátodo no S)
+                       ●──────●──────── G ┘
+                       │
+                     [10k]
+                       │
+                       └──── coletor BC547 ── emissor ── GND
 
- GPIO 27 ──[1k]──────────── base BC547
- GND ────────────────────── emissor BC547
+ Kl.15 ──────[47k]──── 1N4148 ──●──── base BC547
+                                │
+ GPIO HOLD ──[10k]──── 1N4148 ──●     (1N4148: ânodo do lado da fonte,
+                                │      cátodo na base)
+                             [100k]
+                                │
+ GND ───────────────────────────●
 ```
+
+- **Liga:** Kl.15 sobe → BC547 satura → V_GS ≈ −0,82 × V_bat (−11,9 V a 14,4 V,
+  −7,4 V a 9 V na partida) → MOSFET conduz. O firmware sobe o HOLD nas primeiras
+  linhas do `setup()`.
+- **Desliga:** chave desligada → `PowerState` vê pelo GPIO 13 (circuito A, sem
+  mudança) → grava NVS → resumo de viagem → solta o HOLD → MOSFET corta.
+- **Fail-safe:** ESP32 travado ou resetando com a chave desligada → GPIO em alta
+  impedância → desliga sozinho. No always-on, um travamento em light sleep drena a
+  bateria.
+- **GRACE sem gastar nada:** em vez de 1 h em light sleep, grava o horário do
+  DS3231 ao desligar e decide no próximo boot (< 1 h → retoma a viagem). O stash
+  slot do `TripLog` já existe pra isso.
+- Um Kl.15 que cai na partida (§4.1) deixa de reiniciar o P-OBC, porque o HOLD
+  segura. O debounce do `PowerState` continua valendo pro GPIO 13.
+- Mais gatilhos = mais um diodo no nó da base. ACC (ligar em acessório, junto com
+  o rádio) entra assim; o pino 2 do TID (AA, rádio ligado) é candidato a fazer
+  esse papel sem fio novo — medir.
+- O voltímetro (§3.3) passa pro lado D do MOSFET; no Kl.30 ele seria o único
+  consumo permanente (~12 µA). A queda no MOSFET a 0,3 A é ~35 mV, desprezível.
+- Custa **1 GPIO de saída nativo** — nunca num expansor I²C: o expansor mantém a
+  saída travada em HIGH se o ESP32 travar, e o fail-safe some. Candidato: o **27**
+  ([pinout.md](pinout.md)), único livre que não é strapping desde que o buzzer
+  saiu do escopo.
+
+### 3.6 Montagem na placa perfurada
+
+Trilha só de estanho serve pra ligar 1-2 ilhas vizinhas. Trilha longa de estanho
+gasta solda, é difícil de refazer e trinca com vibração e ciclo térmico — o
+ambiente do painel. O resto é fio:
+
+| Técnica | Quando |
+|---|---|
+| Perna do próprio componente dobrada até a ilha de destino | A mais comum: deitar a sobra da perna ao longo da trilha |
+| Fio de cobre estanhado nu (~0,5 mm) | Trilhas retas e barramentos (GND e 3V3 pela borda). Pernas cortadas de resistor servem |
+| Fio isolado sólido | Cruzamentos e ligações longas. Cabo de rede UTP: 24 AWG sólido, 8 cores. Wire-wrap 30 AWG pra sinal |
+
+Regras pra placa que vai rodar no carro:
+
+- **Soldar o fio em toda ilha** por onde ele passa, não só nas pontas — fio solto
+  vibra e quebra na solda.
+- **Lado do carro numa borda, ESP32 na outra.** Bornes KF301 e a entrada dos
+  circuitos (2k2, 100k, diodos, LED do opto) juntos na borda; o PC817 atravessa a
+  divisa. Pico de 70 V do chicote nunca corre ao lado de trilha de 3,3 V.
+- **Componente pesado** (eletrolítico, 7805, IRF9540N) leva gota de cola quente ou
+  silicone na base.
+- **Fio do chicote só pelo borne**, nunca soldado direto na placa.
+- **Verniz isolante** em spray depois de testado — opcional, protege de umidade e
+  condensação.
+- **Desenhar antes de soldar:** DIY Layout Creator (gratuito, tem modo placa
+  perfurada) ou papel quadriculado. Evita o "faltou espaço pro último fio".
 
 ---
 
@@ -375,6 +471,45 @@ multímetro **sem carga**, só depois ligar ESP32/display.
 Nem toda DevKit tem diodo entre o 5 V do USB e o VIN. Com a placa alimentada pelo
 carro, não plugar o USB do notebook sem conferir o esquema da sua placa — de novo,
 OTA resolve.
+
+### 4.7 Antena GPS sob o plástico do painel
+
+O P-OBC fica no topo do painel, no lugar do TID, só com a tampa plástica por cima.
+Funciona: plástico de painel (PP/ABS) é praticamente transparente em L1
+(1575 MHz), perde < 1 dB. Muita antena GPS de fábrica fica exatamente aí. O que
+atrapalha é outra coisa:
+
+- **Metal acima da antena.** Ela vê o céu pelo para-brisa; o teto tapa a parte de
+  trás. Encostar a antena o mais à frente possível, perto da base do vidro, com o
+  patch virado pra cima (até ~30° de inclinação não importa).
+- **Película metalizada/refletiva no para-brisa** atenua 10 dB ou mais. Película
+  comum (tingida, sem metal) não incomoda.
+- **O próprio P-OBC.** Harmônicos do SPI do LT7680, do painel e dos bucks caem em
+  L1 e reduzem a sensibilidade do receptor sem dar erro nenhum. Antena a ≥ 15-20 cm
+  da eletrônica do display e dos bucks, cabo longe dos fios do display.
+- **Plano de terra.** Patch cerâmico e antena de base magnética rendem mais sobre
+  metal; em cima de plástico perdem um pouco de ganho. Uma chapinha de aço ou
+  alumínio (ou fenolite cobreado) de ~5-7 cm embaixo devolve isso.
+
+**Com o patch cerâmico pequeno do kit (o caso atual).** É quase sempre passivo: o
+verso só tem a cerâmica e o cabo soldado. Plaquinha com componentes ou blindagem
+metálica atrás = ativo. Passivo com ~10 cm de cabo amarra o módulo à antena, então
+os dois saem juntos da placa principal: **NEO-8M + patch numa subunidade própria**,
+encostada no para-brisa, ligada ao P-OBC por cabo de 4 vias (VCC, GND, TX, RX).
+UART a 38400 baud atravessa ~1 m de cabo comum sem problema; o 1k em série no TX
+(§3.4) fica do lado do ESP32. O u.FL é frágil e solta com vibração — uma gota de
+cola quente ou silicone depois de encaixado.
+
+Céu parcial também piora a geometria. Com menos satélites atrás, sobe o HDOP e,
+pior, o erro vertical, que é justamente o que a inclinação usa (o gate de HDOP ≤ 2
+do `GpsModule` corta o cálculo quando a geometria degrada).
+
+**Teste antes de fechar o painel:** ler `SAT` e `HDOP` na GPS DEBUG com a antena na
+posição final, depois com a mesma antena afastada ~50 cm do P-OBC (ainda sob o
+para-brisa), esperando ~1 min em cada. Se melhorar visivelmente longe, é ruído do
+P-OBC → afastar a antena de vez. Referência no NEO-8M (GPS + GLONASS): céu aberto
+dá `SAT` 10-12 (o GGA costuma travar em 12) e HDOP ≤ 1,0; sob o plástico, 8+ e
+HDOP ≤ 1,5 é bom.
 
 ---
 

@@ -122,7 +122,7 @@ pio run -t clean                         # Limpa build
 - **Display:** ER-TFT4.58-1 320×960 IPS via LT7680 (SPI) + breakout FPC 20 pinos
 - **RTC:** DS3231 com bateria CR2032
 - **Temperatura:** DS18B20 × 2 (interna + externa, OneWire)
-- **GPS:** NEO-8M com antena externa. **Alimentação em trilho 3.3V comutado pela
+- **GPS:** NEO-8M com antena patch cerâmica de cabo curto (u.FL), provavelmente passiva — instalação em [instalação](docs/instalacao-carro.md) §4.7. **Alimentação em trilho 3.3V comutado pela
   ignição** (pendência de hardware — MOSFET/load switch, ver §7.2): o módulo puxa
   ~25-30 mA continuamente, o que destruiria as metas de ~1 mA em light sleep e
   ~10 µA em deep sleep se ficasse no 3.3V permanente. A bateria de backup do
@@ -130,7 +130,7 @@ pio run -t clean                         # Limpa build
   existe, a bancada alimenta direto no 3.3V permanente; o firmware não muda
   (sem energia, o link fica em `ABSENT`).
 - **Alimentação:** Buck DC-DC automotivo (LM2596 / MP1584), saída dupla 5V (ESP32) + 3.3V (display e periféricos). **Entrada 12-14.4V vem da bateria direta com fusível 1A** (NÃO mais do 12V chaveado), porque o ESP32 fica energizado 100% do tempo, igual TID/MID factory. Estado de ignição é lido por sinal digital separado em GPIO 13, não pela presença/ausência de tensão de alimentação. Quiescent target: ~10 µA em deep sleep, ~1 mA em light sleep, ~80 mA em ACTIVE.
-- **Buzzer:** piezo passivo (não montado ainda)
+- **Botões:** alavanca do limpador de Astra com computador de bordo (no carro); a bancada usa pulsadores. Buzzer está **fora do escopo**.
 
 ### 4.2 Mapa de pinos ESP32
 
@@ -141,8 +141,8 @@ pinos do painel ST7701S, ignição RTC-capable, expansão via I²C).
 Resumo pra decisão rápida: **15 pinos conectados** hoje — 9 do display+backlight,
 4 de ignição/farol/botões, 2 do GPS (Serial1 em 39/15). Reservados por comentário
 mas ainda sem código: 21/22 (I²C), 32 (voltímetro), 33 (boia), 34 (injeção),
-36 (VSS). **Só sobram 27 (buzzer), 12 e 0** — os dois últimos são strapping e
-devem ser evitados. Ou seja: periférico novo daqui pra frente entra por
+36 (VSS). **Só sobram 27, 12 e 0** — os dois últimos são strapping e devem ser
+evitados; o 27 é o candidato ao HOLD da auto-retenção (§7.2). Ou seja: periférico novo daqui pra frente entra por
 **I²C (21/22)** ou por **reuso pós-`tftInit()` de 4/14/17**.
 
 ### 4.3 Sinais do carro
@@ -334,6 +334,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 - **Desligar o display em GRACE / DEEP_SLEEP** — resolvido (lógica). `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. **Pendência de hardware:** o PWM hoje chega só ao LED onboard — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high, então `BACKLIGHT_ACTIVE_LOW=false`; `tftBacklight()` inverte internamente se um breakout futuro for active-low — basta flipar a flag.
 - **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Como o ESP32 é always-on, não é "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 - **Cidade atual via GPS (reverse geocoding offline)** — pendente. GPS dá só lat/lon; nome de cidade exige tabela embarcada. Motivação: animar a viagem mostrando "cruzando Mossoró", "entrando em Natal" — nenhum TID/MID factory faz isso, encaixa direto no espírito "beat the OEMs". Caminhos: (a) lista IBGE de ~5570 municípios como (nome, lat_centro, lon_centro) + nearest-neighbor — cabe em poucas centenas de KB na flash interna, precisão suficiente pra cidade-resolução; (b) polígonos GeoJSON dos municípios + point-in-polygon — preciso na divisa, mas provavelmente exige flash SPI externo (W25Q64 já previsto em §8.1); (c) online via Nominatim/Google só em WiFi — descartado, carro não tem WiFi em movimento. Default natural é (a) com fallback "fora de área" quando o município mais próximo passar de um raio sane (ex. >50 km). Decidir formato da tabela (PROGMEM array, blob em SPIFFS/LittleFS) e onde a info aparece na UI (footer da SystemScreen? tela própria de viagem?) quando entrar na Fase 3.
+- **Always-on vs alimentação comutada com auto-retenção** — pendente. Motivos: consumo parado (buck + DevKit ficam longe dos ~10 µA da §4.1) e possíveis problemas do LT7680 com sleep/wake, que um power-cycle por viagem contorna. Variante proposta: Kl.15 liga, o ESP32 se segura por um GPIO (MOSFET P high-side, como o relé principal da ME7), grava a NVS, mostra o resumo e corta a própria energia; GRACE vira conta de horário do DS3231 no próximo boot. Custa 1 GPIO nativo (candidato: 27; expansor I²C mataria o fail-safe). Circuito e peças (já na lista como contingência): [instalação](docs/instalacao-carro.md) §2.7/§3.5.
 - **Temperatura externa: NTC original vs DS18B20** — pendente. O NTC do para-choque
   já chega pelo chicote do TID (sem cabo novo), mas é analógico e o ADC1 não tem
   pino livre → exige ADS1115 no I²C, que também resolve voltímetro/boia e a errata
