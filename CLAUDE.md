@@ -121,7 +121,7 @@ pio run -t clean                         # Limpa build
 - **MCU:** ESP32 WROOM-32 (38 pinos)
 - **Display:** ER-TFT4.58-1 320×960 IPS via LT7680 (SPI) + breakout FPC 20 pinos
 - **RTC:** DS3231 com bateria CR2032
-- **Temperatura:** DS18B20 × 2 (interna + externa, OneWire)
+- **Temperatura:** só **externa**, pelo NTC original do para-choque (chega no chicote do TID) lido no ADS1115. DS18B20 em sonda fica de plano B se o NTC reprovar na medição. **Temperatura interna está fora do escopo** (§7.2) — o código ainda a tem.
 - **GPS:** NEO-8M com antena patch cerâmica de cabo curto (u.FL), provavelmente passiva — instalação em [instalação](docs/instalacao-carro.md) §4.7. Alimentado pelo **3.3V da placa**,
   depois do corte da auto-retenção: liga e desliga junto com o resto, sem trilho
   próprio. A bateria de backup do módulo preserva efemérides → hot start em ~1-5 s.
@@ -308,7 +308,7 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 
 > Ler em conjunto com a metodologia iterativa (3.1). Cada fase é um conjunto de features cujo bloqueio é hardware específico.
 
-**Fase 1 — Bancada (sem carro):** RTC DS3231 + NTP fallback, temps DS18B20, voltímetro, dimmer PWM. UI completa rodando sobre simulação (estado atual).
+**Fase 1 — Bancada (sem carro):** RTC DS3231 + NTP fallback, ADS1115 (temperatura externa, boia, voltímetro), dimmer PWM. UI completa rodando sobre simulação (estado atual).
 
 **Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS — a `VEL` da GpsScreen já é a régua pronta pra essa calibração (ver a divisão de papéis em §7.2). Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState — hoje como light sleep; com a auto-retenção vira conta de horário do DS3231 no boot (§7.2). Quando o opto for montado, basta `USE_REAL_IGNITION=true`.
 
@@ -354,10 +354,18 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 - **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Com a auto-retenção o P-OBC boota no ON da chave, antes da partida, então a partida acontece com ele rodando — continua não sendo "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 - **Cidade atual via GPS (reverse geocoding offline)** — pendente. GPS dá só lat/lon; nome de cidade exige tabela embarcada. Motivação: animar a viagem mostrando "cruzando Mossoró", "entrando em Natal" — nenhum TID/MID factory faz isso, encaixa direto no espírito "beat the OEMs". Caminhos: (a) lista IBGE de ~5570 municípios como (nome, lat_centro, lon_centro) + nearest-neighbor — cabe em poucas centenas de KB na flash interna, precisão suficiente pra cidade-resolução; (b) polígonos GeoJSON dos municípios + point-in-polygon — preciso na divisa, mas provavelmente exige flash SPI externo (W25Q64 já previsto em §8.1); (c) online via Nominatim/Google só em WiFi — descartado, carro não tem WiFi em movimento. Default natural é (a) com fallback "fora de área" quando o município mais próximo passar de um raio sane (ex. >50 km). Decidir formato da tabela (PROGMEM array, blob em SPIFFS/LittleFS) e onde a info aparece na UI (footer da SystemScreen? tela própria de viagem?) quando entrar na Fase 3.
 - **Always-on vs auto-retenção** — **resolvido: auto-retenção** (§4.1). Motivo principal: power-on reset do LT7680 a cada viagem, em vez de confiar em sleep/wake num projeto caseiro; consumo parado zero vem de brinde. Chave MOSFET com relé de reserva. Timer de hardware fixo (555/delay-off) foi descartado: mais peças que o HOLD, gravação correndo contra o relógio, duração do resumo fixa num resistor. O trilho comutado próprio do GPS (7805 no Kl.15) saiu junto com o always-on. Firmware: item "Migração" acima.
-- **Temperatura externa: NTC original vs DS18B20** — pendente. O NTC do para-choque
-  já chega pelo chicote do TID (sem cabo novo), mas é analógico e o ADC1 não tem
-  pino livre → exige ADS1115 no I²C, que também resolve voltímetro/boia e a errata
-  dos GPIOs 36/39. Decidir depois de medir o chicote ([instalação](docs/instalacao-carro.md) §1).
+- **Temperatura externa: NTC original vs DS18B20** — encaminhado: **NTC original**.
+  Chega pelo chicote do TID (sem cabo novo) e é lido no ADS1115 (já comprado), que
+  também resolve voltímetro/boia e a errata dos GPIOs 36/39. DS18B20 não foi
+  comprado; a sonda volta só se a medição do chicote reprovar o NTC
+  ([instalação](docs/instalacao-carro.md) §1).
+- **Temperatura interna — corte de escopo** (hardware decidido, código pendente).
+  O foco do P-OBC é **combustível**; temperatura interna não muda nenhuma decisão
+  de quem dirige, então o sensor não foi comprado. O código continua como está por
+  ora: `telemetryTempInt()` (simulado) e a SystemScreen ainda a exibem, e
+  `USE_REAL_TEMP_SENSORS` assume dois DS18B20. Questão em aberto: tirar da
+  Telemetry e da SystemScreen, ou reaproveitar o espaço da tela pra outra
+  grandeza. Decidir quando mexer na SystemScreen ou ligar o NTC.
 
 ---
 

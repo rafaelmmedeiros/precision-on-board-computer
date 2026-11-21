@@ -123,8 +123,7 @@ sobra pra erro de solda.
 
 | Tem? | Item | Qtd | Notas | Link |
 |---|---|---|---|---|
-| [ ] | **DS18B20 sonda à prova d'água** (inox, cabo 1-3 m) | 1 | Temp. externa — **só se não reaproveitar o NTC original** (§1.2). Atrás do para-choque/grade, longe do radiador |  |
-| [ ] | **DS18B20** (sonda ou TO-92) | 1 | Temp. interna |  |
+| [ ] | **DS18B20 sonda à prova d'água** (inox, cabo 1-3 m) | 1 | **Não comprar agora.** Plano B da temp. externa, só se a medição reprovar o NTC original (§1.2). Atrás do para-choque/grade, longe do radiador. Temp. interna saiu do escopo (`CLAUDE.md` §7.2) |  |
 | [x] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |  |
 | [x] | **Alavanca do limpador** de Astra com computador de bordo | 1 | Botões do P-OBC, no lugar de pulsadores de painel. Contatos a medir (§1.3) |  |
 | [ ] | Antena GPS **ativa** (SMA, cabo 1-3 m) + pigtail **u.FL → SMA** | 1 + 1 | Plano B se o teste do §4.7 reprovar o patch passivo: o LNA dentro da antena tolera ruído e cabo, e o módulo volta pra placa principal. Antes, conferir ~3 V DC no pino central do u.FL com o módulo ligado — sem essa polarização o módulo não alimenta antena ativa. Barato; pedir junto por causa do prazo |  |
@@ -182,7 +181,7 @@ ficam folgados pras correntes do P-OBC (< 0,5 A, fusível de 1 A no Kl.30).
 
 | Tem? | Item | Qtd | Por quê | Link |
 |---|---|---|---|---|
-| [ ] | Módulo **MCP23017** (16 GPIO digitais) | 1 | **Opcional**, sem uso concreto hoje. Saídas push-pull e pino de interrupção — melhor que o PCF8574. Só pra sinal lento (LED, saída liga/desliga, botão extra). **Não serve** pra HOLD (§3.5) nem injeção/VSS (timing de µs) |  |
+| [ ] | Módulo **MCP23017** (16 GPIO digitais) | 1 | **Opcional**, sem uso concreto hoje. Anúncios costumam oferecer MCP23017 e **MCP23S17** juntos: o S17 é SPI e exigiria um CS que não existe (só sobram 12 e 0) — escolher a variante 23017. Saídas push-pull e pino de interrupção — melhor que o PCF8574. Só pra sinal lento (LED, saída liga/desliga, botão extra). **Não serve** pra HOLD (§3.5) nem injeção/VSS (timing de µs) |  |
 | [x] | Módulo **ADS1115** (I²C, 16 bits, 4 canais) | 2 | **Necessário se reaproveitar o NTC original.** Um de reserva. Ao receber, conferir que é ADS1115 de verdade e não ADS1015 (12 bits) vendido como 1115. A marcação (**BOGI** = 1115, **BRPI** = 1015) é pista, não prova: há relato de placas com a mesma marcação e resoluções diferentes. **Teste definitivo no firmware:** ler o registrador de conversão com o potenciômetro girando — no ADS1015 os 4 bits de baixo são **sempre zero**; e o ADS1115 não passa de ~860 amostras/s (o 1015 chega a 1600+). ADC do ESP32 é ruidoso e não-linear; o ADS1115 entra no barramento I²C (21/22) que já existe, libera os GPIOs 32/33 e elimina a errata do §4.2. Voltímetro preciso também é o que viabiliza compensar o tempo morto do injetor pela tensão — algo que computador de bordo de fábrica não faz |  |
 
 Alocação natural dos 4 canais: **A0** voltímetro · **A1** boia · **A2** NTC externo
@@ -203,10 +202,10 @@ Peças do §3.5, que é o jeito de alimentar o P-OBC (`CLAUDE.md` §4.1). BC547C
 
 | Tem? | Item | Qtd | Por quê | Link |
 |---|---|---|---|---|
-| [ ] | MOSFET canal P **IRF9540N** (TO-220, −100 V / −23 A) | 3 | Chave high-side. −100 V dá folga de load dump; a corrente real é < 0,5 A |  |
-| [ ] | Zener **15 V** (BZX55C15 0,5 W ou 1N4744A 1 W) | 5 | Grampo G-S do MOSFET (V_GS máx ±20 V) |  |
+| [x] | MOSFET canal P **IRF9540N** (TO-220, −100 V / −23 A) | 3 | Chave high-side. −100 V dá folga de load dump; a corrente real é < 0,5 A. **IRF9540 (sem N) também serve:** mesma pinagem e mesmos −100 V, só tem R_DS(on) maior (0,20 Ω contra 0,117 Ω), o que a 0,3 A dá ~60 mV de queda em vez de ~35 mV |  |
+| [x] | Zener **15 V** — comprado **1N4744A** (1 W); BZX55C15 0,5 W é equivalente | 5 | Grampo G-S do MOSFET (V_GS máx ±20 V) |  |
 | [ ] | Relé 12 V de PCI **SRD-12VDC-SL-C** | 2 | Reserva do MOSFET (ver abaixo). Mesmo estágio de gatilho, 1N4148 de roda-livre na bobina |  |
-| [ ] | Módulo FRAM I²C **MB85RC256V** (32 KB) | 2 | **Opcional.** Checkpoint dos integradores a cada segundo, sem desgaste (10¹² escritas) nem tempo de apagamento: perder energia sem aviso (bateria desconectada, fusível) custa ≤ 1 s de viagem. Entra no I²C 21/22 |  |
+| [x] | Módulo FRAM I²C **MB85RC256V** (32 KB) | 2 | **Opcional.** Checkpoint dos integradores a cada segundo, sem desgaste (10¹² escritas) nem tempo de apagamento: perder energia sem aviso (bateria desconectada, fusível) custa ≤ 1 s de viagem. Entra no I²C 21/22 |  |
 
 **Decisão: MOSFET é o plano A**, e o relé vai junto na compra como reserva. Se o
 MOSFET der problema na montagem, o relé entra no lugar dele com 1N4148 de
@@ -223,9 +222,9 @@ watchdog (§3.5, fail-safe).
 
 | Tem? | Item | Qtd | Por quê | Link |
 |---|---|---|---|---|
-| [ ] | Trimpot multivoltas **500 Ω** (3296W) | 2 | Faz o papel da boia (38-283 Ω) na bancada (§3.3) |  |
-| [ ] | Resistor **470 Ω 1 W** | 2 | Faz o papel da fonte de corrente do painel de instrumentos, que alimenta a boia (§3.3) |  |
-| [ ] | Potenciômetro linear **10k** | 2 | Teste rápido do ADC e do firmware, direto no 3V3 (§3.3) |  |
+| [x] | Trimpot multivoltas **500 Ω** (3296W) | 2 | Faz o papel da boia (38-283 Ω) na bancada (§3.3) |  |
+| [x] | Resistor **470 Ω 1 W** | 2 | Faz o papel da fonte de corrente do painel de instrumentos, que alimenta a boia (§3.3) |  |
+| [x] | Potenciômetro linear **10k** | 2 | Teste rápido do ADC e do firmware, direto no 3V3 (§3.3) |  |
 
 ---
 

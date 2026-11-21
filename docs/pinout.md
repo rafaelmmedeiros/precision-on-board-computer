@@ -45,7 +45,7 @@ Circuitos de interface completos: [Instalação no carro](instalacao-carro.md) �
 
 | Função | Status | Caminhos |
 |---|---|---|
-| DS18B20 ×2 (interno + externo, OneWire) | Sem alocação | Opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
+| DS18B20 (OneWire) | **Fora por ora** — interna cortada do escopo, externa vai pelo NTC original no ADS1115 (`CLAUDE.md` §4.1). Só volta como plano B da externa | Se voltar: opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
 
 #### Truly livres no ESP32
 
