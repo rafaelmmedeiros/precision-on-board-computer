@@ -155,8 +155,8 @@ prontos servem do jeito que vêm.
 | [x] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |  |
 | [x] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |  |
 | [ ] | **TID usado ou queimado** (ferro-velho, Mercado Livre) | 1 | Fonte do conector que encaixa no chicote original — adaptador sem cortar fio (§1.2) |  |
-| [ ] | **Conector do painel de instrumentos, os dois lados** (sucata: painel queimado + pedaço de chicote de Astra no ferro-velho) | 1 | Chicote plug and play (em Y) pra derivar a boia sem cortar fio original (§4.9) |  |
-| [ ] | **Posi-Tap** para fio 18-22 AWG (0,35-0,75 mm²) | 5 | Derivação sem cortar nem descascar onde não dá pra usar conector — fio da injeção perto da ECU (§4.9) |  |
+| [ ] | **Conector do painel de instrumentos, os dois lados** (sucata: painel queimado + pedaço de chicote de Astra no ferro-velho) | 1 | **Fase carro, não precisa pra bancada.** Chicote plug and play (em Y) pra derivar a boia sem cortar fio original (§4.9) |  |
+| [ ] | **Posi-Tap** para fio 18-22 AWG (0,35-0,75 mm²) | 5 | **Fase carro, não precisa pra bancada.** Derivação sem cortar nem descascar onde não dá pra usar conector — fio da injeção perto da ECU (§4.9) |  |
 | [ ] | **JST PH 2.0 3 pinos** (par macho+fêmea com rabicho 26 AWG) | 1 | LM2596 **5 V**: VIN · GND · 5V |  |
 | [ ] | **JST PH 2.0 4 pinos** | 1 | LM2596 **3,3 V**: VIN · GND · 3V3 · GND |  |
 | [ ] | **JST PH 2.0 5 pinos** | 1 | Botões da alavanca: R · S · comum · 2 reserva (a alavanca pode ter mais botões, §1.3) |  |
@@ -218,6 +218,14 @@ foi considerado e descartado. Dá o mesmo comportamento visível, mas custa mais
 peças que o HOLD, faz a gravação na NVS correr contra o relógio e fixa a duração
 do resumo num resistor. A única vantagem dele, não depender do firmware, vem do
 watchdog (§3.5, fail-safe).
+
+### 2.8 Bancada — simular sinais do carro
+
+| Tem? | Item | Qtd | Por quê | Link |
+|---|---|---|---|---|
+| [ ] | Trimpot multivoltas **500 Ω** (3296W) | 2 | Faz o papel da boia (38-283 Ω) na bancada (§3.3) |  |
+| [ ] | Resistor **470 Ω 1 W** | 2 | Faz o papel da fonte de corrente do painel de instrumentos, que alimenta a boia (§3.3) |  |
+| [ ] | Potenciômetro linear **10k** | 2 | Teste rápido do ADC e do firmware, direto no 3V3 (§3.3) |  |
 
 ---
 
@@ -310,8 +318,9 @@ abre e dá um pico indutivo de **~60-70 V** no fechamento. O VSS pode ser 5 V ou
 ```
 
 - **Voltímetro:** R2 = **180k** → 16 V vira 2,44 V (topo da faixa linear do ADC com
-  atenuação de 11 dB). Ligar **depois do fusível e antes do diodo de reverso**, pra
-  não medir a queda do diodo. Consome ~12 µA permanente.
+  atenuação de 11 dB). Ligar no **lado D do MOSFET** (§3.5), pra não ficar
+  consumindo da bateria com o P-OBC desligado. Ali ele mede ~0,3 V a menos que a
+  bateria (queda do 1N5822); a calibração contra multímetro absorve isso.
 - **Boia:** R2 depende do que você mediu no §1. Alvo: tensão máxima da boia → ~2,0 V
   no pino. `R2 ≈ 1M × 2,0 / (Vmax − 2,0)`. Se Vmax ≤ 2,4 V, dispensa o divisor:
   só 100k em série + 100nF.
@@ -319,6 +328,27 @@ abre e dá um pico indutivo de **~60-70 V** no fechamento. O VSS pode ser 5 V ou
   grampo (que vazaria e estragaria a leitura nessa impedância).
 - Calibração contra multímetro (voltímetro) e contra litros na bomba (boia) —
   medida física, não ajuste a olho (§3.2 do CLAUDE.md).
+
+**Boia na bancada (§2.8).** No carro, o painel de instrumentos alimenta a boia
+(resistor variável pra massa) e lê a tensão no meio. Na bancada, dois níveis:
+
+1. **Só firmware:** potenciômetro de 10k entre 3V3 e GND, cursor no GPIO 33 por
+   1k em série. Testa ADC, filtro e conversão pra litros sem risco nenhum.
+2. **Circuito completo**, imitando o carro com a fonte de 12 V da bancada:
+
+```
+ 12 V bancada ──[470Ω 1W]──●──[1M]──┬──────────┬──── GPIO 33
+                           │        │          │
+                     trimpot 500Ω [820k]    [100nF]
+                       (= boia)     │          │
+ GND ──────────────────────●────────┴──────────┘
+```
+
+   Boia em 38 Ω (cheio) → 0,9 V no nó → 0,41 V no pino; em 283 Ω (vazio) →
+   4,5 V → 2,03 V. O 470 Ω dissipa até ~0,3 W, por isso 1 W. Isso valida o
+   divisor e o firmware; o R2 definitivo e a curva vêm do carro (§1.3), porque a
+   fonte do painel real é desconhecida até medir. A leitura real da boia ainda não
+   existe no firmware (`USE_REAL_FUEL_LEVEL`, hoje simulado).
 
 ### 3.4 GPS — alimentação e serial
 
