@@ -122,14 +122,21 @@ pio run -t clean                         # Limpa build
 - **Display:** ER-TFT4.58-1 320×960 IPS via LT7680 (SPI) + breakout FPC 20 pinos
 - **RTC:** DS3231 com bateria CR2032
 - **Temperatura:** DS18B20 × 2 (interna + externa, OneWire)
-- **GPS:** NEO-8M com antena patch cerâmica de cabo curto (u.FL), provavelmente passiva — instalação em [instalação](docs/instalacao-carro.md) §4.7. **Alimentação em trilho 3.3V comutado pela
-  ignição** (pendência de hardware — MOSFET/load switch, ver §7.2): o módulo puxa
-  ~25-30 mA continuamente, o que destruiria as metas de ~1 mA em light sleep e
-  ~10 µA em deep sleep se ficasse no 3.3V permanente. A bateria de backup do
-  próprio módulo preserva efemérides → hot start em ~1-5 s. Enquanto o switch não
-  existe, a bancada alimenta direto no 3.3V permanente; o firmware não muda
-  (sem energia, o link fica em `ABSENT`).
-- **Alimentação:** Buck DC-DC automotivo (LM2596 / MP1584), saída dupla 5V (ESP32) + 3.3V (display e periféricos). **Entrada 12-14.4V vem da bateria direta com fusível 1A** (NÃO mais do 12V chaveado), porque o ESP32 fica energizado 100% do tempo, igual TID/MID factory. Estado de ignição é lido por sinal digital separado em GPIO 13, não pela presença/ausência de tensão de alimentação. Quiescent target: ~10 µA em deep sleep, ~1 mA em light sleep, ~80 mA em ACTIVE.
+- **GPS:** NEO-8M com antena patch cerâmica de cabo curto (u.FL), provavelmente passiva — instalação em [instalação](docs/instalacao-carro.md) §4.7. Alimentado pelo **3.3V da placa**,
+  depois do corte da auto-retenção: liga e desliga junto com o resto, sem trilho
+  próprio. A bateria de backup do módulo preserva efemérides → hot start em ~1-5 s.
+- **Alimentação — auto-retenção (decidido):** Kl.30 com fusível 1A → **MOSFET P
+  high-side** (IRF9540N; relé SRD de reserva) → dois módulos LM2596
+  ajustáveis (entrada até 40 V), um em 5V (ESP32 VIN) e um em 3.3V (display, GPS,
+  periféricos). Proteção de entrada (Schottky série + TVS 22 V + eletrolítico) em
+  [instalação](docs/instalacao-carro.md) §3.5. A chave liga o P-OBC
+  pelo Kl.15; o firmware se segura pelo **HOLD no GPIO 27**; ao desligar a chave
+  (lida no GPIO 13), grava a NVS, mostra o resumo e solta o HOLD → tudo apaga.
+  **Motivo: power-on reset de tudo a cada viagem**, principalmente do LT7680 —
+  num projeto caseiro, reset limpo vale mais que sleep/wake. Desligado, o consumo é
+  o vazamento do MOSFET. Circuito: [instalação](docs/instalacao-carro.md) §3.5.
+  **O firmware ainda implementa o always-on antigo** (light/deep sleep, GRACE
+  alimentado) — migração listada em §7.2.
 - **Botões:** alavanca do limpador de Astra com computador de bordo (no carro); a bancada usa pulsadores. Buzzer está **fora do escopo**.
 
 ### 4.2 Mapa de pinos ESP32
@@ -140,9 +147,9 @@ pinos do painel ST7701S, ignição RTC-capable, expansão via I²C).
 
 Resumo pra decisão rápida: **15 pinos conectados** hoje — 9 do display+backlight,
 4 de ignição/farol/botões, 2 do GPS (Serial1 em 39/15). Reservados por comentário
-mas ainda sem código: 21/22 (I²C), 32 (voltímetro), 33 (boia), 34 (injeção),
-36 (VSS). **Só sobram 27, 12 e 0** — os dois últimos são strapping e devem ser
-evitados; o 27 é o candidato ao HOLD da auto-retenção (§7.2). Ou seja: periférico novo daqui pra frente entra por
+mas ainda sem código: 21/22 (I²C), 27 (HOLD da auto-retenção), 32 (voltímetro),
+33 (boia), 34 (injeção), 36 (VSS). **Só sobram 12 e 0**, ambos strapping, a
+evitar. Ou seja: periférico novo daqui pra frente entra por
 **I²C (21/22)** ou por **reuso pós-`tftInit()` de 4/14/17**.
 
 ### 4.3 Sinais do carro
@@ -213,8 +220,8 @@ estados do link, polls UBX que validam a config no próprio receptor (em vez de 
 flag na NVS), pacote automotivo `dynModel=4`, e derivação honesta de inclinação a
 partir da altitude.
 
-O essencial pra não errar ao mexer: `gpsInit()` **não** configura nada (o GPS pode
-estar sem energia no boot, §4.1) — o handshake vive em `gpsTick()`, fatiado entre
+O essencial pra não errar ao mexer: `gpsInit()` **não** configura nada (o GPS liga
+junto com o ESP32 e ainda está bootando, ou nem está conectado na bancada) — o handshake vive em `gpsTick()`, fatiado entre
 frames. `gpsTick()` roda só em ACTIVE, logo após `telemetryTick()`; `gpsPause()`
 nas duas bordas do light sleep. Nenhum outro módulo consome GPS:
 `telemetrySpeedKmh()` segue independente por decisão explícita (§7.2).
@@ -289,6 +296,8 @@ Hoje: **GPS DEBUG** (config UBX verificada no receptor, saúde do link, gates da
 | `GRACE` | `BACKLIGHT_LEVEL_OFF` (0) | `BACKLIGHT_LEVEL_OFF` |
 | `DEEP_SLEEP_PENDING` | `BACKLIGHT_LEVEL_OFF` | `BACKLIGHT_LEVEL_OFF` |
 
+As linhas `GRACE` e `DEEP_SLEEP_PENDING` somem com a migração pra auto-retenção (§7.2): o corte de energia apaga o display. O PWM continua valendo pra dia/noite.
+
 Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onboard** — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high (`BACKLIGHT_ACTIVE_LOW=false`); `tftBacklight(0..255)` continua 0=escuro/255=claro e inverte internamente se a flag virar true. Os níveis estão calibrados pra bancada — não cegar o operador é prioridade. Em produção, sob luz solar do carro, faz sentido subir DAY pra 255 e revisitar NIGHT.
 
 ---
@@ -301,22 +310,32 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
 
 **Fase 1 — Bancada (sem carro):** RTC DS3231 + NTP fallback, temps DS18B20, voltímetro, dimmer PWM. UI completa rodando sobre simulação (estado atual).
 
-**Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS — a `VEL` da GpsScreen já é a régua pronta pra essa calibração (ver a divisão de papéis em §7.2). Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState (§5.8) — quando o opto for montado, basta `USE_REAL_IGNITION=true`.
+**Fase 2 — Sinais do carro:** interrupt do GPIO 34 (injeção, pulse width µs), VSS no GPIO 36 com k-factor calibrado por GPS — a `VEL` da GpsScreen já é a régua pronta pra essa calibração (ver a divisão de papéis em §7.2). Sinal de ignição já é digital em GPIO 13 (não depende mais do voltímetro), e a detecção automática de fim de viagem (>1h em GRACE) já está implementada via PowerState — hoje como light sleep; com a auto-retenção vira conta de horário do DS3231 no boot (§7.2). Quando o opto for montado, basta `USE_REAL_IGNITION=true`.
 
 **Fase 3 — GPS:** altitude, inclinação, heading e velocidade independente **entregues** (GpsModule + GpsScreen, §5.3), com config UBX automotiva persistida e auto-validada. Pendentes na fase: NTP→GPS pra hora atômica, e reverse geocoding offline pra cidade atual (§7.2).
 
 ### 7.2 Decisões em aberto
 
-- **Trilho 3.3V comutado pela ignição pro GPS** — pendente (hardware). O NEO-8M
-  puxa ~25-30 mA continuamente; no 3.3V permanente isso destrói as metas de ~1 mA
-  em light sleep e ~10 µA em deep sleep da §4.1. Falta um MOSFET P-channel
-  high-side / load switch acionado pela ignição (ou por um GPIO de enable
-  dedicado, se valer poder ligar o GPS com a chave desligada). O firmware já
-  assume esse mundo: o handshake UBX é lazy e o link cai pra `ABSENT` sem energia
-  (§5.3). Bancada roda no 3.3V permanente até então. **Caminho proposto** (a
-  confirmar na montagem): 7805 alimentado pelo próprio 12 V da ignição, sem
-  MOSFET, mais 1k em série no TX (GPIO 15) — ver
-  [Instalação no carro](docs/instalacao-carro.md) §3.4.
+- **Migração do firmware pra auto-retenção** — pendente (código). O hardware
+  está decidido (§4.1); o código ainda é o do always-on. O que muda:
+  - **Bloqueio:** `connectWiFi()` e `syncTime()` no `setup()` esperam conexão
+    pra sempre. Antes o boot frio era raro; agora é toda viagem, e no carro sem
+    WiFi o P-OBC travaria no boot. Precisam de timeout curto ou rodar fora do
+    caminho crítico.
+  - HOLD (GPIO 27) em HIGH nas primeiras linhas do `setup()`, mais
+    `enableLoopWDT()` — sem watchdog, um loop travado segura a energia.
+  - `POST_TRIP_SUMMARY` termina com stash da viagem e HOLD em LOW, em vez de ir
+    pra GRACE/light sleep. O GRACE vira `tripLogConsumeStashOrFinalize()` no
+    boot, que já existe (< 1 h desde o stash → retoma a viagem).
+  - Saem: light sleep, `telemetryPause()`/`gpsPause()` nas bordas do sono,
+    `DEEP_SLEEP_PENDING`, o skip de WiFi por `ESP_RST_DEEPSLEEP`, as linhas de
+    GRACE/DEEP_SLEEP do backlight (§6.6).
+  - **Fallback de bancada:** com USB plugado o ESP32 não apaga ao soltar o HOLD.
+    Se continuar vivo alguns segundos depois de soltar, apagar o display e entrar
+    em deep sleep com wake ext0 no GPIO 13 — o mesmo vale se o MOSFET falhar
+    em curto no carro.
+  - Docs a reescrever junto: PowerState em [arquitetura](docs/architecture.md),
+    `gpsPause()` em [GpsModule](docs/gps-module.md), §9.
 
 - **VSS vs GPS como fonte de velocidade** — **resolvido**. Não são
   intercambiáveis: o GPS é mais *exato* (Doppler da portadora, ~±0.2-0.4 km/h,
@@ -332,9 +351,9 @@ Sinal sai em GPIO 2 via LEDC (5 kHz, 8 bits). **Hoje o PWM só chega ao LED onbo
   pra comparar contra o VSS na Fase 2.
 
 - **Desligar o display em GRACE / DEEP_SLEEP** — resolvido (lógica). `tftBacklight()` em `Tft.h` faz PWM em GPIO 2 (LEDC), `main.cpp::applyBacklightPolicy()` (§6.6) decide os níveis a cada frame. **Pendência de hardware:** o PWM hoje chega só ao LED onboard — pra dimerizar o backlight real do LT7680 falta cortar o hard-tie de 3.3V do BL_CONTROL e levar GPIO 2 até esse pino. A placa atual é active-high, então `BACKLIGHT_ACTIVE_LOW=false`; `tftBacklight()` inverte internamente se um breakout futuro for active-low — basta flipar a flag.
-- **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Como o ESP32 é always-on, não é "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
+- **Crank guard (delay pós-ignição)** — pendente. OEMs atrasam o boot do TID/MID após girar a chave pra esperar a tensão estabilizar quando o alternador assume; durante a partida a bateria afunda pra ~9-10V e o regime de injeção/VSS fica fora do normal, então qualquer leitura nesse intervalo é lixo (voltímetro vermelho, km/L absurdo). Com a auto-retenção o P-OBC boota no ON da chave, antes da partida, então a partida acontece com ele rodando — continua não sendo "boot delay" e sim um sub-estado de ACTIVE: ao detectar ignição LOW, segurar UI/telemetria num estado "aquecendo" até ver tensão estável >12.5V por 1-2s, com timeout fixo (~2s) como fallback enquanto o voltímetro não estiver montado. Encaixe natural: novo estado `CRANK_GUARD` no PowerState entre wake e ACTIVE, ou flag interna na Telemetry que congela getters nos últimos valores conhecidos. Decidir entre essas duas formas quando for implementar.
 - **Cidade atual via GPS (reverse geocoding offline)** — pendente. GPS dá só lat/lon; nome de cidade exige tabela embarcada. Motivação: animar a viagem mostrando "cruzando Mossoró", "entrando em Natal" — nenhum TID/MID factory faz isso, encaixa direto no espírito "beat the OEMs". Caminhos: (a) lista IBGE de ~5570 municípios como (nome, lat_centro, lon_centro) + nearest-neighbor — cabe em poucas centenas de KB na flash interna, precisão suficiente pra cidade-resolução; (b) polígonos GeoJSON dos municípios + point-in-polygon — preciso na divisa, mas provavelmente exige flash SPI externo (W25Q64 já previsto em §8.1); (c) online via Nominatim/Google só em WiFi — descartado, carro não tem WiFi em movimento. Default natural é (a) com fallback "fora de área" quando o município mais próximo passar de um raio sane (ex. >50 km). Decidir formato da tabela (PROGMEM array, blob em SPIFFS/LittleFS) e onde a info aparece na UI (footer da SystemScreen? tela própria de viagem?) quando entrar na Fase 3.
-- **Always-on vs alimentação comutada com auto-retenção** — pendente. Motivos: consumo parado (buck + DevKit ficam longe dos ~10 µA da §4.1) e possíveis problemas do LT7680 com sleep/wake, que um power-cycle por viagem contorna. Variante proposta: Kl.15 liga, o ESP32 se segura por um GPIO (MOSFET P high-side, como o relé principal da ME7), grava a NVS, mostra o resumo e corta a própria energia; GRACE vira conta de horário do DS3231 no próximo boot. Custa 1 GPIO nativo (candidato: 27; expansor I²C mataria o fail-safe). Circuito e peças (já na lista como contingência): [instalação](docs/instalacao-carro.md) §2.7/§3.5.
+- **Always-on vs auto-retenção** — **resolvido: auto-retenção** (§4.1). Motivo principal: power-on reset do LT7680 a cada viagem, em vez de confiar em sleep/wake num projeto caseiro; consumo parado zero vem de brinde. Chave MOSFET com relé de reserva. Timer de hardware fixo (555/delay-off) foi descartado: mais peças que o HOLD, gravação correndo contra o relógio, duração do resumo fixa num resistor. O trilho comutado próprio do GPS (7805 no Kl.15) saiu junto com o always-on. Firmware: item "Migração" acima.
 - **Temperatura externa: NTC original vs DS18B20** — pendente. O NTC do para-choque
   já chega pelo chicote do TID (sem cabo novo), mas é analógico e o ADC1 não tem
   pino livre → exige ADS1115 no I²C, que também resolve voltímetro/boia e a errata

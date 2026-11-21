@@ -25,7 +25,7 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 | Botão R | 25 | Pull-up interno, chave pra GND. No carro: botão da alavanca do limpador (contatos a medir, instalacao-carro.md §1.3) |
 | Botão S | 26 | Pull-up interno, chave pra GND. Idem |
 | GPS RX (Serial1) | 39 (VN) | GPS TX → ESP32. Input-only, sem pull interno — o GPS aciona a linha push-pull em 3.3V, então não precisa resistor. |
-| GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.3). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. No carro, **1k em série**: com o GPS no trilho comutado e sem energia, o TX em HIGH alimentaria o módulo pelo diodo de proteção. |
+| GPS TX (Serial1) | 15 | ESP32 → GPS RX, usado pra config UBX (§5.3). Strapping MTDO: no reset é *entrada* com pull-up HIGH (log de boot habilitado). O RX do GPS é entrada de alta impedância e não puxa a linha pra baixo → seguro. **Não** pôr pull-down nessa linha. No carro, **1k em série** como proteção barata (GPS e ESP32 compartilham o corte da auto-retenção, então não é mais obrigatório — instalacao-carro.md §3.4). |
 
 #### Reservados (pinos comprometidos, hardware ainda não montado)
 
@@ -36,6 +36,7 @@ A ER-TFT4.58-1 + LT7680 consome **9 GPIOs** entre o bus VSPI principal, a bring-
 | Voltímetro | 32 | ADC1, divisor 1M/180k (16V→2.44V). Mede bateria/alternador. |
 | Boia combustível | 33 | ADC1 obrigatório (ADC2 inutilizável com WiFi). Divisor 1M/R2, R2 conforme a tensão medida no fio. |
 | Injeção (bicos) ECU | 34 | Input-only, interrupt. Buffer BC547 de alta impedância — provavelmente a saída de consumo da ECU, mas se for fio cru de injetor tem 12 V com picos de ~70 V; divisor direto não serve. GPIO HIGH = bico aberto (no caso do injetor cru; polaridade da saída de consumo a confirmar). |
+| HOLD da auto-retenção | 27 | Saída digital, sobe nas primeiras linhas do `setup()` e segura o MOSFET da alimentação (instalacao-carro.md §3.5). Precisa ser pino nativo — num expansor I²C a saída fica travada se o ESP32 travar e o fail-safe some. Hardware decidido, sem código ainda (`CLAUDE.md` §7.2). |
 | VSS (velocidade) | 36 (VP) | Input-only, interrupt. Mesmo buffer BC547 da injeção. **Errata GPIO-3.11:** glitches de ~80 ns quando o ADC liga (ver instalacao-carro.md §4.2). |
 
 Circuitos de interface completos: [Instalação no carro](instalacao-carro.md) §3.
@@ -44,18 +45,17 @@ Circuitos de interface completos: [Instalação no carro](instalacao-carro.md) �
 
 | Função | Status | Caminhos |
 |---|---|---|
-| HOLD da auto-retenção | Contingência (`CLAUDE.md` §7.2) | GPIO 27. Precisa ser pino nativo — num expansor I²C a saída fica travada se o ESP32 travar e o fail-safe some (instalacao-carro.md §3.5). |
 | DS18B20 ×2 (interno + externo, OneWire) | Sem alocação | Opção mais natural: **reaproveitar GPIO 4 depois do `tftInit()`**, já que a SW-SPI do painel ST7701S só pulsa esse pino uma vez no boot e depois deixa idle. Custa um `pinMode()` posterior. Outra opção: expansor I²C ou um pino estritamente novo. |
 
 #### Truly livres no ESP32
 
 | GPIO | Notas |
 |---|---|
-| 27 | Livre (buzzer saiu do escopo). Candidato ao HOLD da auto-retenção, se ela for adotada. |
 | 12 | Strapping perigoso (define voltagem do flash interno) — **evitar** salvo último recurso. |
 | 0 | Strapping (boot mode) — **evitar**. |
 
-O GPS fechou os dois últimos pinos confortáveis (39 e 15). Qualquer periférico
+O GPS fechou 39 e 15, e o HOLD da auto-retenção levou o 27, o último pino
+confortável. Qualquer periférico
 novo daqui pra frente entra por **I²C (21/22)**, por reuso pós-`tftInit()` dos
 pinos do painel (4/14/17), ou paga o preço de 12/0.
 
@@ -67,7 +67,7 @@ painel. Como 39/15 estavam livres, não valia o risco.
 
 **Notas de design:**
 
-- **Ignição em pino digital dedicado:** GPIO 13 é RTC-capable e funciona como `ext0` wake source — o ESP32 dorme em deep sleep e acorda na transição da chave indo pra LOW. NÃO é strapping pin. Antes da arquitetura always-on a ignição era inferida pela voltagem no GPIO 32; hoje GPIO 32 é só voltímetro.
+- **Ignição em pino digital dedicado:** GPIO 13 é o que avisa o firmware que a chave desligou enquanto o HOLD ainda segura a energia — sem ele o ESP32 não saberia quando mostrar o resumo e soltar o HOLD. NÃO é strapping pin. É RTC-capable (`ext0` wake): o código atual ainda usa isso no deep sleep do always-on, e a migração pra auto-retenção mantém como fallback de bancada (`CLAUDE.md` §7.2). GPIO 32 é só voltímetro.
 - **Pinos do painel ST7701S são reutilizáveis:** GPIO 4, 14, 17 só são pulsados uma vez em `ST7701S_Initial()` (chamado dentro de `tftInit()`). Após isso ficam idle e podem ser reconfigurados via `pinMode()` pra outra função (OneWire, UART, etc.). Documentar bem quem reaproveita o quê pra evitar conflito de ordem de init.
 - **Display RESET (16) também só é pulsado no boot,** mas é mais arriscado reaproveitar — se algum reset transiente for emitido depois (raro), bagunça o periférico que estiver lá.
 - **Expansão futura via I²C:** o bus 21/22 escala — qualquer periférico I²C novo entra sem custo de pino, só conferindo conflito de endereço. Útil quando aparecer um sensor I²C novo, expansor de GPIO ou ADC externo.

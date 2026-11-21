@@ -147,6 +147,14 @@ NVS é a escolha pra estado persistente do projeto. SD card e exportação foram
 
 `include/PowerState.h` + `src/PowerState.cpp`. Sempre ativo no `loop()` antes de qualquer outra coisa.
 
+> **Esta é a implementação atual, feita pro hardware always-on, que foi abandonado.**
+> O hardware decidido é a auto-retenção (`CLAUDE.md` §4.1, instalacao-carro.md
+> §3.5): o P-OBC corta a própria energia depois do resumo. GRACE e
+> DEEP_SLEEP_PENDING deixam de existir como estados alimentados, e o GRACE vira o
+> `tripLogConsumeStashOrFinalize()` no boot, que já existe. O que muda no código
+> está listado em `CLAUDE.md` §7.2. Até a migração, o texto abaixo descreve o
+> que roda.
+
 Estados: `ACTIVE`, `POST_TRIP_SUMMARY`, `GRACE`, `DEEP_SLEEP_PENDING`. Transições:
 
 - **ACTIVE → POST_TRIP_SUMMARY:** GPIO 13 vai pra HIGH (ignição off). `telemetryTick()` para de ser chamado — engine off não deve avançar integradores.

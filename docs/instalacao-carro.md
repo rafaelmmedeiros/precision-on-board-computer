@@ -25,7 +25,7 @@ brasileiro, que é derivado do Astra G. Fonte:
 
 | Pino | Função | Cor (Astra G) | Uso no P-OBC |
 |---|---|---|---|
-| 1 | Ignição (Kl. 15) | preto | Circuito A → GPIO 13; alimenta o 7805 do GPS |
+| 1 | Ignição (Kl. 15) | preto | Circuito A → GPIO 13; gatilho da auto-retenção (§3.5) |
 | 2 | AA — rádio ligado (esconde a data) | branco-vermelho | — |
 | 3 | +12 V permanente (Kl. 30) | vermelho | Alimentação (fusível 1 A do lado do P-OBC) |
 | 4 | Iluminação noturna dimerizada | cinza-amarelo | Circuito A → GPIO 35 (farol) |
@@ -117,10 +117,7 @@ sobra pra erro de solda.
 | [x] | Transistor **BC547C** (TO-92) — qualquer rank serve (§3.2) | 10 | Injeção, VSS (circuito B), auto-retenção (§3.5) |  |
 | [x] | Diodo **1N4148** | 20 | Proteção de reverso em todos os circuitos |  |
 | [x] | **Kit de resistores filme metálico 1%**, 1/4 W, sortido E24 (10 Ω–1 MΩ) | 1 kit | Tudo. Valores usados: 1k, 2k2, 10k, 22k, 100k, 180k, 1M |  |
-| [ ] | Capacitor cerâmico **100 nF** | 20 | Filtro nos GPIOs, desacoplamento |  |
-| [ ] | Capacitor cerâmico **330 nF** | 2 | Entrada do 7805 |  |
-| [ ] | Capacitor eletrolítico **10 µF / 25 V** | 5 | Saída do 7805 |  |
-| [ ] | Regulador **L7805CV** (TO-220) | 2 | Trilho comutado do GPS (§3.4) |  |
+| [x] | Capacitor cerâmico **100 nF** | 20 | Filtro nos GPIOs, desacoplamento |  |
 
 ### 2.2 Sensores e periféricos
 
@@ -141,14 +138,16 @@ O projeto da fonte é seu (§4.1) — aqui é só a lista pra não esquecer nada
 |---|---|---|---|---|
 | [ ] | Porta-fusível inline + fusível de lâmina **1 A** | 1 + 5 | No Kl.30 que vem do conector do TID, do lado do P-OBC |  |
 | [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |  |
-| [x] | Módulo buck **5 V** | 1 | ESP32 (VIN) |  |
-| [x] | Módulo buck **3,3 V** | 1 | Display |  |
-| [ ] | Proteção de entrada (reverso + TVS + eletrolítico de entrada) | — | Conforme seu projeto |  |
+| [x] | Módulo **LM2596** ajustável, ajustado em **5 V** | 1 | ESP32 (VIN). Entrada 3-40 V. O CI é de 3 A nominais, ~2 A na prática sem dissipador; a carga real é bem menor |  |
+| [x] | Módulo **LM2596** ajustável, ajustado em **3,3 V** | 1 | Display, GPS e periféricos |  |
+| [ ] | Diodo Schottky **1N5822** (3 A / 40 V) | 3 | Proteção contra bateria invertida, em série no Kl.30 (§3.5). O MOSFET não protege disso |  |
+| [ ] | TVS **P6KE22A** (DO-15, PTH, unidirecional) | 5 | Grampo de transientes no Kl.30, ~31 V no pior caso. SMBJ18A é o equivalente SMD |  |
+| [ ] | Capacitor eletrolítico **470 µF / 50 V low-ESR** | 3 | Reservatório comum das duas fontes, depois do MOSFET (com um 100 nF em paralelo) |  |
 
-Ponto concreto pra escolha do módulo buck: os LM2596 comuns gastam ~5-10 mA
-parados (LED de power + chaveamento), e a DevKit mais alguns mA (AMS1117 + chip
-USB). Com o carro parado isso dá ~0,2 Ah/dia — não mata a bateria em semanas, mas
-está longe dos ~10 µA da §4.1. Desoldar o LED do módulo já ajuda.
+As duas fontes ficam **depois do MOSFET da auto-retenção** (§3.5): com a chave
+desligada e o resumo encerrado, as duas perdem a entrada e tudo apaga. Por isso o
+consumo delas paradas (LED de power, chaveamento) não importa mais, e módulos
+prontos servem do jeito que vêm.
 
 ### 2.4 Montagem e chicote
 
@@ -192,21 +191,28 @@ MCP23017 `0x20` (até `0x27`). Cada módulo traz pull-ups próprios (4k7-10k) e 
 ficam em paralelo; acima de ~4 módulos, desoldar os excedentes pra não passar de
 ~3 mA no nível baixo. I²C fica dentro da caixa — nunca em cabo até o para-choque.
 
-### 2.7 Contingência — alimentação comutada com auto-retenção
+### 2.7 Auto-retenção — a chave geral do P-OBC
 
-Peças da variante do §3.5, caso o always-on seja abandonado (`CLAUDE.md` §7.2).
-Comprar junto com o resto porque a China demora. BC547C, 1N4148 e resistores já
-estão no §2.1.
+Peças do §3.5, que é o jeito de alimentar o P-OBC (`CLAUDE.md` §4.1). BC547C,
+1N4148 e resistores já estão no §2.1.
 
 | Tem? | Item | Qtd | Por quê | Link |
 |---|---|---|---|---|
 | [ ] | MOSFET canal P **IRF9540N** (TO-220, −100 V / −23 A) | 3 | Chave high-side. −100 V dá folga de load dump; a corrente real é < 0,5 A |  |
 | [ ] | Zener **15 V** (BZX55C15 0,5 W ou 1N4744A 1 W) | 5 | Grampo G-S do MOSFET (V_GS máx ±20 V) |  |
+| [ ] | Relé 12 V de PCI **SRD-12VDC-SL-C** | 2 | Reserva do MOSFET (ver abaixo). Mesmo estágio de gatilho, 1N4148 de roda-livre na bobina |  |
 | [ ] | Módulo FRAM I²C **MB85RC256V** (32 KB) | 2 | **Opcional.** Checkpoint dos integradores a cada segundo, sem desgaste (10¹² escritas) nem tempo de apagamento: perder energia sem aviso (bateria desconectada, fusível) custa ≤ 1 s de viagem. Entra no I²C 21/22 |  |
 
-Plano B que não depende da China: relé 12 V de PCI (SRD-12VDC-SL-C) no lugar do
-MOSFET, com 1N4148 de roda-livre na bobina. O estágio de gatilho é o mesmo; a
-bobina gasta ~30 mA só enquanto ligado.
+**Decisão: MOSFET é o plano A**, e o relé vai junto na compra como reserva. Se o
+MOSFET der problema na montagem, o relé entra no lugar dele com 1N4148 de
+roda-livre na bobina. O estágio de gatilho é o mesmo, e a bobina gasta ~30 mA só
+enquanto o P-OBC está ligado.
+
+Um timer de hardware fixo (555, módulo delay-off), cortando N s depois da chave,
+foi considerado e descartado. Dá o mesmo comportamento visível, mas custa mais
+peças que o HOLD, faz a gravação na NVS correr contra o relógio e fixa a duração
+do resumo num resistor. A única vantagem dele, não depender do firmware, vem do
+watchdog (§3.5, fail-safe).
 
 ---
 
@@ -309,44 +315,48 @@ abre e dá um pico indutivo de **~60-70 V** no fechamento. O VSS pode ser 5 V ou
 - Calibração contra multímetro (voltímetro) e contra litros na bomba (boia) —
   medida física, não ajuste a olho (§3.2 do CLAUDE.md).
 
-### 3.4 Trilho comutado do GPS (pendência §7.2 do CLAUDE.md)
+### 3.4 GPS — alimentação e serial
 
-Caminho proposto, mais simples que o MOSFET high-side: um **7805 alimentado pelo
-12 V da ignição**. Com a chave desligada não há tensão de entrada, então o consumo
-é zero por construção. Linear em vez de buck = sem ruído de chaveamento perto do
-GPS. Dissipa ~0,3 W a 14,4 V/30 mA, não precisa de dissipador.
+O GPS sai do **3,3 V da placa**, depois do MOSFET da auto-retenção (§3.5): liga e
+desliga junto com o resto, sem regulador próprio. O NEO-8M puxa ~25-30 mA, que só
+existem com o P-OBC ligado. A bateria de backup do módulo guarda as efemérides
+entre viagens → hot start em ~1-5 s.
 
 ```
- 12 V ignição ──●──── 7805 pino 1 (IN)
-                │
-             [330nF]      7805 pino 2 (GND) ── GND
-                │
- GND ───────────●
-
- 7805 pino 3 (OUT) ──●──── VCC do GPS
-                     │
-              [100nF] + [10µF]
-                     │
- GND ────────────────●──── GND do GPS
+ 3,3 V da placa ──●──── VCC do GPS
+                  │
+               [100nF]
+                  │
+ GND ─────────────●──── GND do GPS
 
  GPIO 15 (TX) ──[1k]──── RX do GPS
  GPIO 39 (RX) ────────── TX do GPS
 ```
 
-- Módulos tipo GY-NEO8M aceitam 3,3-5 V no VCC (regulador próprio). Se o seu só
-  aceita 3,3 V, ponha um AMS1117-3.3 depois do 7805.
-- O **1k no TX é obrigatório** nesse arranjo: `gpsPause()` não desliga a Serial1,
-  então o GPIO 15 fica em HIGH com o GPS sem energia e alimentaria o módulo pelo
-  diodo de proteção do pino RX. O resistor limita isso a ~0,3 mA.
+- Módulos tipo GY-NEO8M aceitam 3,3-5 V no VCC (regulador próprio); o 3,3 V serve
+  pra qualquer um.
+- O **1k no TX** é proteção barata, não mais obrigatória: ESP32 e GPS perdem
+  energia juntos, então não sobra o GPIO 15 em HIGH alimentando o módulo
+  desligado pelo diodo do RX. Continua útil na subunidade remota (§4.7) contra
+  sequência de energização desencontrada entre a DevKit e o buck de 3,3 V.
 
-### 3.5 Auto-retenção — contingência pro fim do always-on (`CLAUDE.md` §7.2)
+Histórico: antes da auto-retenção o ESP32 era always-on e o GPS precisava de um
+trilho próprio comutado pela ignição (um 7805 no Kl.15), pra não destruir o
+consumo em sleep. Esse trilho saiu junto com o always-on.
 
-A ignição liga o P-OBC; o ESP32 se segura ligado por um GPIO e decide quando
-cortar a própria energia. É o que a ME7.9.9 faz com o relé principal (pós-
-funcionamento pra gravar adaptação e rodar a ventoinha). Desligado, o consumo é o
-vazamento do MOSFET (sub-µA): buck, AMS1117 e chip USB da DevKit ficam sem
-energia, o que o always-on não consegue (§2.3). E o display ganha um power-on
-reset limpo a cada viagem.
+### 3.5 Auto-retenção — a chave geral do P-OBC (`CLAUDE.md` §4.1)
+
+**É assim que o P-OBC é alimentado.** A ignição liga o P-OBC; o ESP32 se segura
+ligado por um GPIO e decide quando cortar a própria energia. É o que a ME7.9.9 faz
+com o relé principal (pós-funcionamento pra gravar adaptação e rodar a
+ventoinha). O MOSFET corta o 12 V antes das duas fontes, então tudo apaga junto.
+
+Por que esse caminho em vez do always-on: **cada viagem começa com power-on reset
+de tudo**, principalmente do LT7680, cujo comportamento em sleep/wake é a parte
+mais imprevisível do hardware. Num projeto feito em casa, um reset limpo por
+viagem vale mais que acordar de sleep. De brinde, desligado o consumo é o
+vazamento do MOSFET (sub-µA): fontes, AMS1117 e chip USB da DevKit ficam sem
+energia, o que o always-on não conseguia.
 
 ```
  Kl.30 (pós-fusível) ──●──────●──────── S ┐
@@ -373,12 +383,20 @@ reset limpo a cada viagem.
   linhas do `setup()`.
 - **Desliga:** chave desligada → `PowerState` vê pelo GPIO 13 (circuito A, sem
   mudança) → grava NVS → resumo de viagem → solta o HOLD → MOSFET corta.
-- **Fail-safe:** ESP32 travado ou resetando com a chave desligada → GPIO em alta
-  impedância → desliga sozinho. No always-on, um travamento em light sleep drena a
-  bateria.
+- **Fail-safe:** ESP32 **resetando** com a chave desligada → GPIO em alta
+  impedância → desliga sozinho. Um `loop()` **travado** não reseta sozinho e
+  deixaria o HOLD preso em HIGH (~80 mA até alguém perceber). Por isso a
+  implementação do HOLD **exige watchdog**: `enableLoopWDT()` no `setup()` faz o
+  travamento virar reset (hoje o código não liga watchdog nenhum). Pra uma garantia
+  que não dependa de software: HOLD com acoplamento AC (capacitor + diodo na base),
+  em que o firmware precisa ficar alternando o pino e um HIGH preso não segura
+  nada.
 - **GRACE sem gastar nada:** em vez de 1 h em light sleep, grava o horário do
   DS3231 ao desligar e decide no próximo boot (< 1 h → retoma a viagem). O stash
   slot do `TripLog` já existe pra isso.
+- **Bancada / USB:** com o USB plugado o ESP32 não apaga ao soltar o HOLD. O
+  firmware precisa de um fallback: se continuar vivo uns segundos depois de soltar,
+  apaga o display e entra em deep sleep com wake no GPIO 13 (`CLAUDE.md` §7.2).
 - Um Kl.15 que cai na partida (§4.1) deixa de reiniciar o P-OBC, porque o HOLD
   segura. O debounce do `PowerState` continua valendo pro GPIO 13.
 - Mais gatilhos = mais um diodo no nó da base. ACC (ligar em acessório, junto com
@@ -387,9 +405,35 @@ reset limpo a cada viagem.
 - O voltímetro (§3.3) passa pro lado D do MOSFET; no Kl.30 ele seria o único
   consumo permanente (~12 µA). A queda no MOSFET a 0,3 A é ~35 mV, desprezível.
 - Custa **1 GPIO de saída nativo** — nunca num expansor I²C: o expansor mantém a
-  saída travada em HIGH se o ESP32 travar, e o fail-safe some. Candidato: o **27**
-  ([pinout.md](pinout.md)), único livre que não é strapping desde que o buzzer
-  saiu do escopo.
+  saída travada em HIGH se o ESP32 travar, e o fail-safe some. É o **27**
+  ([pinout.md](pinout.md)), único livre que não era strapping.
+
+**Entrada de energia, do chicote até as fontes:**
+
+```
+ Kl.30 ── fusível 1A ── 1N5822 ──●── S  IRF9540N  D ──●──────────●── LM2596 5 V
+                    (ânodo no    │   (gatilho acima)  │          └── LM2596 3,3 V
+                     fusível)  P6KE22A          470µF/50V + 100nF
+                         (cátodo no + )               │
+ GND ────────────────────────────●────────────────────●
+```
+
+- **1N5822 em série:** protege contra bateria invertida (chupeta errada, erro de
+  montagem). Sem ele, o diodo interno do IRF9540N conduziria e as fontes
+  receberiam −11 V. Queda de ~0,35 V a 0,3 A.
+- **P6KE22A:** grampeia load dump e os picos de cargas indutivas (relé, motor de
+  vidro, ventoinha). Standoff de 18,8 V: não conduz em 14,4 V. Grampeia em
+  ≤ 30,6 V, abaixo dos 40 V do LM2596 **e** dos 35 V dos eletrolíticos de entrada
+  que alguns módulos clones usam. O TVS de 24 V comum em automotivo grampearia em
+  ~39 V, no limite do LM2596. Fica depois do fusível: se morrer em curto, o
+  fusível abre. Uma chupeta com 24 V faz ele conduzir pesado e abrir o fusível,
+  e é isso mesmo que ele deve fazer.
+- **470 µF / 50 V depois do MOSFET:** os LM2596 puxam corrente em pulsos e o
+  chicote tem indutância. Sem o reservatório, cada pulso vira ruído na linha, e o
+  GPS sente. Antes do MOSFET ele ficaria pendurado na bateria o tempo todo. Os
+  50 V são folga sobre o grampo do TVS.
+- O IRF9540N (−100 V) e o zener G-S de 15 V já aguentam o que passa do TVS. O
+  gatilho (§3.5) fica depois do 1N5822 também.
 
 ### 3.6 Montagem na placa perfurada
 
@@ -410,7 +454,7 @@ Regras pra placa que vai rodar no carro:
 - **Lado do carro numa borda, ESP32 na outra.** Bornes KF301 e a entrada dos
   circuitos (2k2, 100k, diodos, LED do opto) juntos na borda; o PC817 atravessa a
   divisa. Pico de 70 V do chicote nunca corre ao lado de trilha de 3,3 V.
-- **Componente pesado** (eletrolítico, 7805, IRF9540N) leva gota de cola quente ou
+- **Componente pesado** (eletrolítico, IRF9540N, relé) leva gota de cola quente ou
   silicone na base.
 - **Fio do chicote só pelo borne**, nunca soldado direto na placa.
 - **Verniz isolante** em spray depois de testado — opcional, protege de umidade e
@@ -428,8 +472,9 @@ Muitas linhas "15" cortam enquanto o motor de arranque gira (alívio de carga do
 acessórios). O debounce do `PowerState` é de 50 ms; uma partida de 1-2 s numa linha
 dessas vira "chave desligada" → `POST_TRIP_SUMMARY` no meio da partida. Use uma
 linha que fica viva durante a partida — primeiro candidato é o pino 1 do conector
-do TID (testar, §1.3); se cair, a do painel de instrumentos. O GPS (§3.4) deve sair
-da mesma linha.
+do TID (testar, §1.3); se cair, a do painel de instrumentos. Com a auto-retenção
+(§3.5) uma queda dessas não desliga mais o P-OBC (o HOLD segura), mas o firmware
+ainda veria "chave desligada" — escolher a linha certa continua valendo.
 
 ### 4.2 GPIO 36 e 39 — errata do ESP32
 
@@ -452,7 +497,8 @@ Não muda a compra, mas vale saber antes de virar `USE_REAL_VOLTAGE=true`.
 O módulo ZS-042 tem um circuito de recarga feito pra LIR2032 (recarregável). Com
 CR2032 (não recarregável) ele tenta carregar a pilha. Alimentado em 3,3 V o efeito
 é pequeno, mas o certo é desoldar o resistor de 200 Ω (ou o diodo) ao lado do
-suporte da bateria. Aproveite e desolde o LED de power (consumo em sleep).
+suporte da bateria. O LED de power pode ficar: com a auto-retenção o módulo só é
+alimentado com o P-OBC ligado.
 
 ### 4.4 GPIO 2 (backlight) é strapping
 
@@ -470,7 +516,8 @@ multímetro **sem carga**, só depois ligar ESP32/display.
 
 Nem toda DevKit tem diodo entre o 5 V do USB e o VIN. Com a placa alimentada pelo
 carro, não plugar o USB do notebook sem conferir o esquema da sua placa — de novo,
-OTA resolve.
+OTA resolve. Com USB plugado o ESP32 também não apaga quando solta o HOLD (§3.5,
+fallback de bancada).
 
 ### 4.7 Antena GPS sob o plástico do painel
 
@@ -497,7 +544,7 @@ metálica atrás = ativo. Passivo com ~10 cm de cabo amarra o módulo à antena,
 os dois saem juntos da placa principal: **NEO-8M + patch numa subunidade própria**,
 encostada no para-brisa, ligada ao P-OBC por cabo de 4 vias (VCC, GND, TX, RX).
 UART a 38400 baud atravessa ~1 m de cabo comum sem problema; o 1k em série no TX
-(§3.4) fica do lado do ESP32. O u.FL é frágil e solta com vibração — uma gota de
+(§3.4) fica do lado do ESP32, e o VCC vem do 3,3 V da placa principal. O u.FL é frágil e solta com vibração — uma gota de
 cola quente ou silicone depois de encaixado.
 
 Céu parcial também piora a geometria. Com menos satélites atrás, sobe o HDOP e,

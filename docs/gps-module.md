@@ -10,8 +10,9 @@ sem namespace (espelha `Telemetry`, o análogo direto). Parser: **TinyGPSPlus
 1.1.0** — zero alocação dinâmica, e aceita o talker `$GN` do NEO-8M em modo
 GPS+GLONASS.
 
-**Por que a configuração não roda no `setup()`.** O GPS vive num trilho comutado
-pela ignição (§4.1), então pode estar sem energia quando o `setup()` corre.
+**Por que a configuração não roda no `setup()`.** O GPS liga junto com o ESP32
+(mesmo corte de energia da auto-retenção, §4.1) e ainda está no próprio boot
+quando o `setup()` corre — ou nem está conectado, na bancada.
 `gpsInit()` só abre a `Serial1`; todo o handshake vive em `gpsTick()`, fatiado
 entre frames — cada tick faz no máximo uma ação e retorna, pra caber no orçamento
 de 100 ms do loop.
