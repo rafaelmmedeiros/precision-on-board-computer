@@ -74,7 +74,7 @@ Dois cruzamentos que dão alguma confiança:
   em 2-3 temperaturas conhecidas (gelo fundente, ambiente contra termômetro de
   referência, água morna) e ajustar Steinhart-Hart. Medida física, não tabela de
   fórum.
-- **VSS:** se o pino 9 pulsar, o cabo blindado até o câmbio sai da lista.
+- **VSS:** se o pino 9 pulsar, dispensa puxar cabo blindado até o câmbio.
 - **Conector:** pra não cortar o chicote original, arrumar um **TID usado ou
   queimado** e aproveitar o conector da placa dele. Vira um adaptador
   plug-and-play, reversível.
@@ -136,13 +136,12 @@ O projeto da fonte é seu (§4.1) — aqui é só a lista pra não esquecer nada
 
 | Tem? | Item | Qtd | Notas | Link |
 |---|---|---|---|---|
-| [ ] | Porta-fusível inline + fusível de lâmina **1 A** | 1 + 5 | No Kl.30 que vem do conector do TID, do lado do P-OBC |  |
 | [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |  |
 | [x] | Módulo **LM2596** ajustável, ajustado em **5 V** | 1 | ESP32 (VIN). Entrada 3-40 V. O CI é de 3 A nominais, ~2 A na prática sem dissipador; a carga real é bem menor |  |
 | [x] | Módulo **LM2596** ajustável, ajustado em **3,3 V** | 1 | Display, GPS e periféricos |  |
 | [x] | Diodo Schottky **1N5822** (3 A / 40 V) | 3 | Proteção contra bateria invertida, em série no Kl.30 (§3.5). O MOSFET não protege disso |  |
 | [x] | TVS **P6KE22A** (DO-15, PTH, unidirecional) | 5 | Grampo de transientes no Kl.30, ~31 V no pior caso. SMBJ18A é o equivalente SMD |  |
-| [ ] | Capacitor eletrolítico **470 µF / 50 V, 105 °C** | 3 | Reservatório comum das duas fontes, depois do MOSFET (com um 100 nF em paralelo). **Tensão é o que importa:** 35 V é o mínimo (o TVS grampeia em até 30,6 V), 50 V é o ideal; 16 V/25 V não servem. A capacitância é flexível (220-1000 µF). 105 °C porque o painel aquece no sol |  |
+| [x] | Capacitor eletrolítico **470 µF / 50 V, 105 °C** | 3 | Reservatório comum das duas fontes, depois do MOSFET (com um 100 nF em paralelo). **Tensão é o que importa:** 35 V é o mínimo (o TVS grampeia em até 30,6 V), 50 V é o ideal; 16 V/25 V não servem. A capacitância é flexível (220-1000 µF). 105 °C porque o painel aquece no sol. **Marcas:** japonesas são a referência — **Panasonic** (séries FR/FM/FC), **Nichicon** (PW/HE/PM), **Rubycon** (ZLH/YXF), **Nippon Chemi-Con** (KY/KZE); boas e mais baratas: **Samwha**, **Elite**, **Lelon**, **Jianghai**. Japonesa em marketplace costuma ser falsificada: comprar de distribuidor (LCSC, Mouser, Digi-Key, Farnell) ou loja de componentes conhecida |  |
 
 As duas fontes ficam **depois do MOSFET da auto-retenção** (§3.5): com a chave
 desligada e o resumo encerrado, as duas perdem a entrada e tudo apaga. Por isso o
@@ -155,15 +154,21 @@ prontos servem do jeito que vêm.
 |---|---|---|---|---|
 | [x] | Placa perfurada ilhada (fenolite/fibra) 7×9 cm ou maior | 2 | Uma de reserva |  |
 | [x] | Barra de pinos fêmea 1×20 | 2 | ESP32 removível (soquete) |  |
-| [ ] | Borne KF301 (parafuso) 2 e 3 vias | 10 | Entrada dos fios do carro |  |
 | [ ] | **TID usado ou queimado** (ferro-velho, Mercado Livre) | 1 | Fonte do conector que encaixa no chicote original — adaptador sem cortar fio (§1.2) |  |
-| [ ] | **Conector automotivo à prova d'água 8 vias** (macho+fêmea) | 1 | Chicote → P-OBC, pra poder tirar a unidade |  |
-| [ ] | Conector 4 vias (botões) e 3 vias (sonda externa, se houver) | 1 cada | |  |
-| [ ] | **Cabo blindado 2 vias** (sinal + GND) | 5 m | Injeção (e VSS, se o pino 9 do TID não servir) — malha no GND **só do lado do P-OBC** |  |
-| [ ] | Cabo automotivo 0,5 mm² (ou 22 AWG silicone), 4+ cores | 5 m cada | Adaptador do TID até a placa, boia |  |
-| [ ] | Terminal olhal | 5 | GND no chassi |  |
-| [ ] | Termo-retrátil sortido | 1 kit | |  |
-| [ ] | Caixa plástica (patola) pra eletrônica | 1 | |  |
+| [ ] | **Conector do painel de instrumentos, os dois lados** (sucata: painel queimado + pedaço de chicote de Astra no ferro-velho) | 1 | Chicote plug and play (em Y) pra derivar a boia sem cortar fio original (§4.9) |  |
+| [ ] | **Posi-Tap** para fio 18-22 AWG (0,35-0,75 mm²) | 5 | Derivação sem cortar nem descascar onde não dá pra usar conector — fio da injeção perto da ECU (§4.9) |  |
+| [ ] | **JST PH 2.0 3 pinos** (par macho+fêmea com rabicho 26 AWG) | 1 | LM2596 **5 V**: VIN · GND · 5V |  |
+| [ ] | **JST PH 2.0 4 pinos** | 1 | LM2596 **3,3 V**: VIN · GND · 3V3 · GND |  |
+| [ ] | **JST PH 2.0 5 pinos** | 1 | Botões da alavanca: R · S · comum · 2 reserva (a alavanca pode ter mais botões, §1.3) |  |
+| [ ] | **JST PH 2.0 6 pinos** | 1 | Sinais do carro: VSS · boia · injeção · GND (malha do cabo da injeção) · 2 reserva |  |
+| [ ] | **JST PH 2.0 7 pinos** | 1 | Chicote do TID: Kl.30 · Kl.15 · GND · iluminação (pino 4) · NTC+ · NTC− · AA (pino 2, reserva pro gatilho ACC, §3.5) |  |
+
+**Cada conector tem um número de pinos diferente, de propósito:** assim nenhum
+encaixa no lugar errado. O caso perigoso é trocar os dois LM2596: o de 5 V
+plugado no lugar do de 3,3 V mata display e GPS na hora. Por isso não usar dois
+conectores de mesmo tamanho, mesmo sobrando pino. 26 AWG e o contato do PH (2 A)
+ficam folgados pras correntes do P-OBC (< 0,5 A, fusível de 1 A no Kl.30).
+| [ ] | **Porta-fusível inline + fusível de lâmina 1 A** | 1 + 5 | **Não pular — projeto feito em casa sem fusível é risco de incêndio.** No Kl.30 que vem do conector do TID, do lado do P-OBC, antes de tudo (§3.5) |  |
 
 ### 2.5 Ferramentas (se ainda não tem)
 
@@ -451,12 +456,16 @@ Regras pra placa que vai rodar no carro:
 
 - **Soldar o fio em toda ilha** por onde ele passa, não só nas pontas — fio solto
   vibra e quebra na solda.
-- **Lado do carro numa borda, ESP32 na outra.** Bornes KF301 e a entrada dos
+- **Lado do carro numa borda, ESP32 na outra.** Conectores JST e a entrada dos
   circuitos (2k2, 100k, diodos, LED do opto) juntos na borda; o PC817 atravessa a
   divisa. Pico de 70 V do chicote nunca corre ao lado de trilha de 3,3 V.
 - **Componente pesado** (eletrolítico, IRF9540N, relé) leva gota de cola quente ou
   silicone na base.
-- **Fio do chicote só pelo borne**, nunca soldado direto na placa.
+- **Fio do chicote só por conector** (JST PH 2.0, §2.4), nunca soldado direto na
+  placa. O passo de 2,0 mm não bate com a furação de 2,54 mm: em vez de header na
+  placa, o rabicho de um lado do par é soldado na placa, com o fio dobrado e
+  preso por cola quente perto da solda (alívio de tensão). Depois de encaixar, uma
+  gota de cola ou silicone no par — a trava do PH é só de atrito, e o painel vibra.
 - **Verniz isolante** em spray depois de testado — opcional, protege de umidade e
   condensação.
 - **Desenhar antes de soldar:** DIY Layout Creator (gratuito, tem modo placa
@@ -569,6 +578,27 @@ O ESP32 do protótipo ainda pode servir de bancada alimentado direto no pino 3V3
 pelo LM2596, **se** o AMS1117 morreu aberto. Antes, medir a resistência entre
 5V e 3V3 com a placa desligada: perto de zero = regulador em curto, e aí o 3,3 V
 externo vazaria pro lado do USB.
+
+### 4.9 Derivar sinal sem destruir a fiação original
+
+Nenhum fio original é cortado, descascado ou soldado. Em ordem de preferência:
+
+1. **Chicote plug and play (em Y):** adaptador com o conector original dos dois
+   lados, entre o chicote e o componente, com um fio extra saindo do pino de
+   interesse. Zero dano, reversível tirando o adaptador. É o caso da **boia**, no
+   conector do painel de instrumentos, e do próprio TID (§1.2).
+2. **Posi-Tap:** agulha fina atravessa o isolamento, sem cortar fio de cobre; ao
+   remover sobra um furo que fita ou cola fecha. Pra fio sem conector viável — a
+   **injeção** perto da ECU, cujo conector é grande demais pra adaptador.
+3. **Back-probe** (terminal fino pela traseira do conector): bom pra medir na
+   bancada, fraco pra instalação permanente que vibra.
+
+**Não usar o derivador rápido (Scotchlok, o azul/vermelho de lâmina):** corta
+fios do cobre e deixa cobre exposto oxidando.
+
+A derivação em paralelo não altera o instrumento: o divisor da boia (§3.3) puxa
+~12 µA, nada perto do que o painel usa num sensor de 38-283 Ω; o buffer da
+injeção (§3.2) é de alta impedância.
 
 ---
 
