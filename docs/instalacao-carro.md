@@ -128,7 +128,7 @@ sobra pra erro de solda.
 | [x] | **DS3231** módulo (ZS-042) + CR2032 | 1 | Ver pegadinha §4.3 |  |
 | [x] | **Alavanca do limpador** de Astra com computador de bordo | 1 | Botões do P-OBC, no lugar de pulsadores de painel. Contatos a medir (§1.3) |  |
 | [ ] | Antena GPS **ativa** (SMA, cabo 1-3 m) + pigtail **u.FL → SMA** | 1 + 1 | Plano B se o teste do §4.7 reprovar o patch passivo: o LNA dentro da antena tolera ruído e cabo, e o módulo volta pra placa principal. Antes, conferir ~3 V DC no pino central do u.FL com o módulo ligado — sem essa polarização o módulo não alimenta antena ativa. Barato; pedir junto por causa do prazo |  |
-| [x] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 1 | Reserva — se o único queimar no carro, o projeto para |  |
+| [x] | **ESP32 DevKit 38 pinos** (mesmo modelo) | 2 | Dois lacrados: um vai pro carro, outro fica de reserva. O do protótipo teve o AMS1117 queimado (§4.8) |  |
 
 ### 2.3 Fonte
 
@@ -140,9 +140,9 @@ O projeto da fonte é seu (§4.1) — aqui é só a lista pra não esquecer nada
 | [ ] | **Derivador de fusível** (tamanho conforme §1.3) | 1 | **Opcional** — só se o Kl.15 do TID cair na partida |  |
 | [x] | Módulo **LM2596** ajustável, ajustado em **5 V** | 1 | ESP32 (VIN). Entrada 3-40 V. O CI é de 3 A nominais, ~2 A na prática sem dissipador; a carga real é bem menor |  |
 | [x] | Módulo **LM2596** ajustável, ajustado em **3,3 V** | 1 | Display, GPS e periféricos |  |
-| [ ] | Diodo Schottky **1N5822** (3 A / 40 V) | 3 | Proteção contra bateria invertida, em série no Kl.30 (§3.5). O MOSFET não protege disso |  |
-| [ ] | TVS **P6KE22A** (DO-15, PTH, unidirecional) | 5 | Grampo de transientes no Kl.30, ~31 V no pior caso. SMBJ18A é o equivalente SMD |  |
-| [ ] | Capacitor eletrolítico **470 µF / 50 V low-ESR** | 3 | Reservatório comum das duas fontes, depois do MOSFET (com um 100 nF em paralelo) |  |
+| [x] | Diodo Schottky **1N5822** (3 A / 40 V) | 3 | Proteção contra bateria invertida, em série no Kl.30 (§3.5). O MOSFET não protege disso |  |
+| [x] | TVS **P6KE22A** (DO-15, PTH, unidirecional) | 5 | Grampo de transientes no Kl.30, ~31 V no pior caso. SMBJ18A é o equivalente SMD |  |
+| [ ] | Capacitor eletrolítico **470 µF / 50 V, 105 °C** | 3 | Reservatório comum das duas fontes, depois do MOSFET (com um 100 nF em paralelo). **Tensão é o que importa:** 35 V é o mínimo (o TVS grampeia em até 30,6 V), 50 V é o ideal; 16 V/25 V não servem. A capacitância é flexível (220-1000 µF). 105 °C porque o painel aquece no sol |  |
 
 As duas fontes ficam **depois do MOSFET da auto-retenção** (§3.5): com a chave
 desligada e o resumo encerrado, as duas perdem a entrada e tudo apaga. Por isso o
@@ -557,6 +557,18 @@ para-brisa), esperando ~1 min em cada. Se melhorar visivelmente longe, é ruído
 P-OBC → afastar a antena de vez. Referência no NEO-8M (GPS + GLONASS): céu aberto
 dá `SAT` 10-12 (o GGA costuma travar em 12) e HDOP ≤ 1,0; sob o plástico, 8+ e
 HDOP ≤ 1,5 é bom.
+
+### 4.8 Nunca alimentar o display pelo 3V3 da DevKit
+
+O AMS1117 da DevKit é linear, sem dissipador, e já sustenta o ESP32 (picos de
+~250 mA com WiFi). Pendurar o display nele queimou o regulador do protótipo. O
+display e os periféricos saem do **LM2596 de 3,3 V**; o pino 3V3 da DevKit
+alimenta só pull-ups e sinal (§3). GND comum entre as duas fontes.
+
+O ESP32 do protótipo ainda pode servir de bancada alimentado direto no pino 3V3
+pelo LM2596, **se** o AMS1117 morreu aberto. Antes, medir a resistência entre
+5V e 3V3 com a placa desligada: perto de zero = regulador em curto, e aí o 3,3 V
+externo vazaria pro lado do USB.
 
 ---
 
